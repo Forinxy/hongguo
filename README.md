@@ -19,7 +19,7 @@
 - Android 10+（minSdk 29）
 - LSPosed 框架（API 102）
 - 目标 App：红果免费短剧（`com.phoenix.read`）
-- 目前测试版本为（`com.phoenix.read`）和（`com.phoenix.read`）
+- 目前测试版本为（`版本 7.3.2.32(73232)`）和（`版本 7.3.1.32(73132)`）
 
 
 ## 下载
