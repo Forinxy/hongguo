@@ -19,13 +19,8 @@
 - Android 10+（minSdk 29）
 - LSPosed 框架（API 102）
 - 目标 App：红果免费短剧（`com.phoenix.read`）
+- 目前测试版本为（`com.phoenix.read`）和（`com.phoenix.read`）
 
-## 更新检测
-
-模块启动时（模块 App 或作用域 App）自动对比 GitHub Releases 最新版本号，**有新版本才弹窗提示，无更新完全静默**。
-
-- 仓库：<https://github.com/KEJIYUNB/hongguo>
-- 发布新版本时打 tag 即可（如 `v1.0.1`、`1.0.1`）
 
 ## 下载
 
