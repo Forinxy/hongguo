@@ -1,8 +1,3 @@
-# LSPosed 模块全局配置
-# 全局异常处理模式：PROTECTIVE / PASSTHROUGH
-# PROTECTIVE = hook 抛异常被捕获并记录，调用继续（推荐）
-# PASSTHROUGH = hook 抛异常直接传给调用方（调试用）
 exception_mode=PROTECTIVE
 
-# 是否启用热重载支持
 hot_reload=true

@@ -11,12 +11,18 @@ class MainHook : XposedModule() {
 
     companion object {
         private const val TAG = "ZongHe"
-        private const val TARGET_PACKAGE = "com.phoenix.read"
+        @Volatile private var currentProcessName: String = ""
         private const val DEMO_PACKAGE = "xyz.kejiyu.hongguo"
+
+        private val TARGET_PACKAGES = setOf(
+            "com.phoenix.read",
+            "com.phoenix.read.oversea.gp",
+        )
     }
 
     override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
-        LogUtil.init()
+        currentProcessName = param.processName ?: ""
+        LogUtil.init(param.processName)
         LogUtil.info("══════════ 模块加载 ══════════")
         LogUtil.info("进程=${param.processName} | systemServer=${param.isSystemServer}")
         LogUtil.info("框架=${frameworkName} v${frameworkVersion} | API=${apiVersion}")
@@ -24,7 +30,6 @@ class MainHook : XposedModule() {
         LogUtil.info("══════════════════════════════")
         log(Log.INFO, TAG, "模块已加载 | 进程=${param.processName} | API=${apiVersion}")
 
-        // ===== 更新检查：App 或作用域每次启动时，对比 GitHub 最新版本号 =====
         try {
             val ver = BuildConfig.VERSION_NAME.substringBefore(' ').substringBefore('(')
             LogUtil.info("更新检查启动 | 当前版本=$ver")
@@ -43,7 +48,7 @@ class MainHook : XposedModule() {
 
     override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
         val pkg = param.packageName
-        if (pkg != TARGET_PACKAGE && pkg != DEMO_PACKAGE) return
+        if (pkg !in TARGET_PACKAGES && pkg != DEMO_PACKAGE) return
 
         LogUtil.info("onPackageLoaded: $pkg | first=${param.isFirstPackage}")
         val cl = param.defaultClassLoader
@@ -54,23 +59,32 @@ class MainHook : XposedModule() {
             try { Hooks.installDemoHooks(this, cl); LogUtil.info("  ✓ 完成") }
             catch (e: Exception) { LogUtil.error("演示 Hook 失败", e) }
         }
-        if (pkg == TARGET_PACKAGE) {
-            LogUtil.info("  → TARGET_PACKAGE，等待 onPackageReady")
+        if (pkg in TARGET_PACKAGES) {
+            LogUtil.info("  → 目标包，等待 onPackageReady")
         }
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val pkg = param.packageName
-        if (pkg != TARGET_PACKAGE && pkg != DEMO_PACKAGE) return
+        if (pkg !in TARGET_PACKAGES && pkg != DEMO_PACKAGE) return
 
         LogUtil.info("onPackageReady: $pkg")
         LogUtil.info("  classLoader=${param.classLoader}")
         LogUtil.info("  appComponentFactory=${param.appComponentFactory}")
 
-        if (pkg == TARGET_PACKAGE) {
-            LogUtil.info("  → 安装业务 Hook")
+        if (pkg in TARGET_PACKAGES) {
+
+            val proc = currentProcessName
+            val isWebViewSandbox = proc.contains(":sandboxed_process") ||
+                proc.contains(":privileged_process") ||
+                proc.contains(":renderer")
+            if (isWebViewSandbox) {
+                LogUtil.info("  → WebView 沙箱/渲染进程，跳过 UI 业务 Hook | process=$proc")
+                return
+            }
+            LogUtil.info("  → 安装业务 Hook | process=$proc | main=${proc == pkg}")
             try {
-                Hooks.installBusinessHooks(this, param.classLoader)
+                Hooks.installBusinessHooks(this, param.classLoader, pkg)
                 LogUtil.info("  ✓ 业务 Hook 安装完成")
             } catch (e: Exception) {
                 LogUtil.error("业务 Hook 安装失败", e)

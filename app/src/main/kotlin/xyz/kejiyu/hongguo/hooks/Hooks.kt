@@ -1,7 +1,7 @@
 package xyz.kejiyu.hongguo.hooks
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.app.Dialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -34,20 +35,154 @@ import io.github.libxposed.api.XposedInterface.Hooker
 object Hooks {
 
     private var gPrefs: SharedPreferences? = null
-    private var gMasterOn = true
-    private var gStatusOn = true
-    private var gControlOn = true
-    private var gPlayerOn = true
-    private var gAdOn = true
-    private var gRefreshOff = true
-    private var gTopZoneOn = true
+
+    private var gMasterOn = false
+    private var gStatusOn = false
+    private var gControlOn = false
+    private var gPlayerOn = false
+    private var gAdOn = false
+    private var gRefreshOff = false
+    private var gTopZoneOn = false
     private var gNavBarOff = false
     private var gProgressOff = false
     private var gRestoreControlsOnPause = false
-    private var gVipOn = true
-    private var gVipIconOn = true
+    private var gVipOn = false
+    private var gVipIconOn = false
+    private var gMaxQualityOn = false
+
+    private var gDefaultSpeedOn = false
+    private var gDefaultSpeed = 1.0f
+    private const val DEFAULT_SPEED_PREF = "default_speed"
+    private const val DEFAULT_SPEED_VALUE_PREF = "default_speed_value"
+    private val DEFAULT_SPEED_OPTIONS = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 3.0f)
+    private var gDoubleTapCommentOn = false
+
+    private var gOledProtectOn = false
+
+    private var gNotificationMenuOn = false
+
+    private var gDownloadLimitUnlimitOn = false
+    private const val DOWNLOAD_LIMIT_PREF = "download_limit_unlimit"
+    private const val DOWNLOAD_LIMIT_EPISODE_PREF = "download_limit_one_day_episode"
+    private const val DOWNLOAD_LIMIT_SERIES_PREF = "download_limit_one_day_series"
+    private const val DOWNLOAD_LIMIT_TOTAL_PREF = "download_limit_total_series"
+    private const val DOWNLOAD_LIMIT_AB_KEY = "video_download_limit_expansion_v711"
+    private const val DOWNLOAD_LIMIT_DEFAULT_VALUE = 99999
+    private var gDownloadOneDayEpisode = DOWNLOAD_LIMIT_DEFAULT_VALUE
+    private var gDownloadOneDaySeries = DOWNLOAD_LIMIT_DEFAULT_VALUE
+    private var gDownloadTotalSeries = DOWNLOAD_LIMIT_DEFAULT_VALUE
     @Volatile private var gVideoPaused = false
+
+    private val gEngineMaxResolution = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<Any, Any>()
+    )
+
+    private val gControllerMaxResolution = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<Any, Any>()
+    )
+
+    private val gKnownPercentSpeedPlayers = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<Any, Boolean>()
+    )
+    private val gKnownFloatSpeedPlayers = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<Any, Boolean>()
+    )
+
+    private val gRightViewAgencies = mutableListOf<java.lang.ref.WeakReference<Any>>()
+    @Volatile private var gLastDoubleTapCommentAt = 0L
+
+    @Volatile private var gSuppressDoubleTapLikeUntil = 0L
+
+    private val gForcedShortMaskVisibility = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Int>()
+    )
+
+    private data class SavedViewState(var visibility: Int, val alpha: Float)
+    private val gSavedViewStates = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, SavedViewState>()
+    )
+
+    private data class PauseForcedState(
+        val visibility: Int,
+        val alpha: Float,
+        val translationX: Float,
+        val translationY: Float,
+    )
+    private val gPauseForcedStates = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, PauseForcedState>()
+    )
+
+    private val gCleanMaskViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+    private val gInternalViewMutation = object : ThreadLocal<Boolean>() {
+        override fun initialValue(): Boolean = false
+    }
+
+    private val gInsideFeedBottomMarginWrite = object : ThreadLocal<Boolean>() {
+        override fun initialValue(): Boolean = false
+    }
+
+    private val gSavedTopMargins = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Int>()
+    )
+
+    private data class SavedBottomLayoutState(
+        val width: Int,
+        val height: Int,
+        val paddingLeft: Int,
+        val paddingTop: Int,
+        val paddingRight: Int,
+        val paddingBottom: Int,
+        val marginLeft: Int?,
+        val marginTop: Int?,
+        val marginRight: Int?,
+        val marginBottom: Int?,
+        val bottomToTop: Int?,
+        val bottomToBottom: Int?,
+        val goneBottomMargin: Int?,
+    )
+    private val gSavedBottomLayoutStates = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, SavedBottomLayoutState>()
+    )
+
+    private val gSeriesGuardedViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
+    private val gKnownSeriesToolbars = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Int>()
+    )
+
+    private val gKnownRefreshAccessoryViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
+    private val gKnownMainBottomNavViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
+    private val gKnownFullSeriesEntryViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
+    private val gKnownBottomBackdropViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
+    private val gSavedNativeNavBarColors = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<Activity, Int>()
+    )
+
+    private val gFeedViewportNativeBottomMargins = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Int>()
+    )
+    private val gKnownFeedViewportViews = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<View, Boolean>()
+    )
+
     private val gVideoToolbarLayers = mutableListOf<java.lang.ref.WeakReference<Any>>()
+    private val gToolbarBaseLayers = mutableListOf<java.lang.ref.WeakReference<Any>>()
     private data class ShortVideoHolderState(
         val ref: java.lang.ref.WeakReference<Any>,
         var playbackState: Int,
@@ -55,6 +190,8 @@ object Hooks {
     )
     private val gShortVideoHolders = mutableListOf<ShortVideoHolderState>()
     private val gShortSeriesFragments =
+        mutableListOf<java.lang.ref.WeakReference<Any>>()
+    private val gCnHomeFragments =
         mutableListOf<java.lang.ref.WeakReference<Any>>()
     private var gLastVideoStateAt = 0L
     private var gLastVideoStateReason = "init"
@@ -64,13 +201,20 @@ object Hooks {
     private var gCurrentActivity: Activity? = null
 
     private val gTargetIdSet = mutableSetOf<Int>()
-    private val hideClasses = mutableListOf("ry1.e", "fw4.e")
+    private val gProgressIdSet = mutableSetOf<Int>()
+    private val gPauseRestoreIdSet = mutableSetOf<Int>()
+    private val hideClasses: List<String> get() = listOf(gNames.hideView1, gNames.hideView2).filter { it.isNotBlank() }
+    @Volatile private var gNames: TargetNames.Names = TargetNames.CN
+    @Volatile private var gPkg = TargetNames.CN_PACKAGE
+    @Volatile private var gTargetVersionName = "未知"
+    @Volatile private var gTargetVersionCode = -1L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var appCtx: Context? = null
     private var gIsNight = false
     private var gSettingsActivity: Activity? = null
     private val gKejiyuBtnTag = "KEJIYU_BTN_TAG"
+    private val gKejiyuSettingsWrapperTag = "KEJIYU_SETTINGS_WRAPPER_TAG"
 
     private var gTopZoneTracking = false
     private var gTopZoneActive = false
@@ -82,48 +226,1258 @@ object Hooks {
         0x7F0B0BCB, 0x7F0A00D2, 0x7F0B0C6A,
     )
 
-    // ===== 工具 =====
     private fun initPrefs(ctx: Context) {
         if (gPrefs == null) {
             gPrefs = ctx.getSharedPreferences("lspilot_kejiyu", 0)
-            gMasterOn = gPrefs!!.getBoolean("master_on", true)
-            gStatusOn = gPrefs!!.getBoolean("status_bar", true)
-            gControlOn = gPrefs!!.getBoolean("control_hide", true)
-            gPlayerOn = gPrefs!!.getBoolean("player_bar", true)
-            gAdOn = gPrefs!!.getBoolean("ad_block", true)
-            gRefreshOff = gPrefs!!.getBoolean("pull_refresh", true)
-            gTopZoneOn = gPrefs!!.getBoolean("top_zone", true)
+
+            gMasterOn = gPrefs!!.getBoolean("master_on", false)
+            gStatusOn = gPrefs!!.getBoolean("status_bar", false)
+            gControlOn = gPrefs!!.getBoolean("control_hide", false)
+            gPlayerOn = gPrefs!!.getBoolean("player_bar", false)
+            gAdOn = gPrefs!!.getBoolean("ad_block", false)
+            gRefreshOff = gPrefs!!.getBoolean("pull_refresh", false)
+            gTopZoneOn = gPrefs!!.getBoolean("top_zone", false)
             gNavBarOff = gPrefs!!.getBoolean("nav_bar_off", false)
             gProgressOff = gPrefs!!.getBoolean("progress_off", false)
             gRestoreControlsOnPause = gPrefs!!.getBoolean("restore_controls_pause", false)
-            gVipOn = gPrefs!!.getBoolean("vip_unlock", true)
-            gVipIconOn = gPrefs!!.getBoolean("vip_icon", true)
+            gVipOn = gPrefs!!.getBoolean("vip_unlock", false)
+            gVipIconOn = gPrefs!!.getBoolean("vip_icon", false)
+            gMaxQualityOn = gPrefs!!.getBoolean("max_quality", false)
+            gDefaultSpeedOn = gPrefs!!.getBoolean(DEFAULT_SPEED_PREF, false)
+            gDefaultSpeed = normalizeDefaultSpeed(gPrefs!!.getFloat(DEFAULT_SPEED_VALUE_PREF, 1.0f))
+            gDoubleTapCommentOn = gPrefs!!.getBoolean("double_tap_comment", false)
+            gOledProtectOn = gPrefs!!.getBoolean("oled_protect", false)
+            gNotificationMenuOn = gPrefs!!.getBoolean("notification_menu", false)
+            gDownloadLimitUnlimitOn = gPrefs!!.getBoolean(DOWNLOAD_LIMIT_PREF, false)
+            gDownloadOneDayEpisode = gPrefs!!.getInt(DOWNLOAD_LIMIT_EPISODE_PREF, DOWNLOAD_LIMIT_DEFAULT_VALUE)
+            gDownloadOneDaySeries = gPrefs!!.getInt(DOWNLOAD_LIMIT_SERIES_PREF, DOWNLOAD_LIMIT_DEFAULT_VALUE)
+            gDownloadTotalSeries = gPrefs!!.getInt(DOWNLOAD_LIMIT_TOTAL_PREF, DOWNLOAD_LIMIT_DEFAULT_VALUE)
         }
     }
-    private fun savePref(key: String, value: Boolean) { gPrefs?.edit()?.putBoolean(key, value)?.apply() }
-    private fun resolveEntryId(entry: String, root: View?) {
+    private fun savePref(key: String, value: Boolean) {
+        val editor = gPrefs?.edit()?.putBoolean(key, value) ?: return
+
+        if (key == DOWNLOAD_LIMIT_PREF || key == "master_on") editor.commit()
+        else editor.apply()
+    }
+
+    private fun normalizeDefaultSpeed(value: Float): Float {
+        if (!value.isFinite()) return 1.0f
+        return DEFAULT_SPEED_OPTIONS.minByOrNull { kotlin.math.abs(it - value) } ?: 1.0f
+    }
+
+    private fun defaultSpeedPercent(): Int = (normalizeDefaultSpeed(gDefaultSpeed) * 100f + 0.5f).toInt()
+
+    private fun formatSpeed(value: Float): String {
+        val v = normalizeDefaultSpeed(value)
+        return if (kotlin.math.abs(v - v.toInt().toFloat()) < 0.001f) "${v.toInt()}.0x"
+        else ("%.2fx".format(java.util.Locale.US, v)).replace("0x", "x")
+    }
+
+    private fun defaultSpeedSummary(): String = "当前 ${formatSpeed(gDefaultSpeed)}"
+
+    private fun saveDefaultSpeedValue(value: Float) {
+        gDefaultSpeed = normalizeDefaultSpeed(value)
+        gPrefs?.edit()?.putFloat(DEFAULT_SPEED_VALUE_PREF, gDefaultSpeed)?.apply()
+    }
+
+    private fun defaultSpeedEnabledNow(): Boolean = gMasterOn && gDefaultSpeedOn
+
+    private fun weakPlayerSnapshot(map: MutableMap<Any, Boolean>): List<Any> {
+        return try { synchronized(map) { map.keys.toList() } } catch (_: Throwable) { emptyList() }
+    }
+
+    private fun applySpeedToPercentPlayer(player: Any, reason: String): Boolean {
+        if (!defaultSpeedEnabledNow()) return false
+        return try {
+            val method = player.javaClass.getMethod("setPlaySpeed", Integer.TYPE)
+            method.invoke(player, defaultSpeedPercent())
+            LogUtil.incr("defaultSpeedImmediatePercent")
+            true
+        } catch (_: Throwable) {
+            try {
+                val method = player.javaClass.getDeclaredMethod("setPlaySpeed", Integer.TYPE).apply { isAccessible = true }
+                method.invoke(player, defaultSpeedPercent())
+                LogUtil.incr("defaultSpeedImmediatePercent")
+                true
+            } catch (e: Throwable) {
+                LogUtil.debug("默认倍速 percent 应用失败[$reason]: ${e.javaClass.simpleName}: ${e.message}")
+                false
+            }
+        }
+    }
+
+    private fun applySpeedToFloatPlayer(player: Any, reason: String): Boolean {
+        if (!defaultSpeedEnabledNow()) return false
+        return try {
+            val method = player.javaClass.getMethod("setSpeed", java.lang.Float.TYPE)
+            method.invoke(player, gDefaultSpeed)
+            LogUtil.incr("defaultSpeedImmediateFloat")
+            true
+        } catch (_: Throwable) {
+            try {
+                val method = player.javaClass.getDeclaredMethod("setSpeed", java.lang.Float.TYPE).apply { isAccessible = true }
+                method.invoke(player, gDefaultSpeed)
+                LogUtil.incr("defaultSpeedImmediateFloat")
+                true
+            } catch (e: Throwable) {
+                LogUtil.debug("默认倍速 float 应用失败[$reason]: ${e.javaClass.simpleName}: ${e.message}")
+                false
+            }
+        }
+    }
+
+    private fun applyDefaultSpeedNow(reason: String) {
+        if (!defaultSpeedEnabledNow()) return
+        val run = Runnable {
+            var applied = 0
+            weakPlayerSnapshot(gKnownPercentSpeedPlayers).forEach { if (applySpeedToPercentPlayer(it, reason)) applied++ }
+            weakPlayerSnapshot(gKnownFloatSpeedPlayers).forEach { if (applySpeedToFloatPlayer(it, reason)) applied++ }
+            LogUtil.info("默认倍速立即应用 | speed=${formatSpeed(gDefaultSpeed)} | players=$applied | reason=$reason")
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) run.run() else mainHandler.post(run)
+    }
+
+    private fun scheduleDefaultSpeedApply(reason: String) {
+        if (!defaultSpeedEnabledNow()) return
+        mainHandler.post { applyDefaultSpeedNow("$reason/0") }
+        mainHandler.postDelayed({ applyDefaultSpeedNow("$reason/120") }, 120L)
+        mainHandler.postDelayed({ applyDefaultSpeedNow("$reason/420") }, 420L)
+    }
+
+    private fun saveDownloadLimitValues(episode: Int, series: Int, total: Int) {
+        gDownloadOneDayEpisode = episode
+        gDownloadOneDaySeries = series
+        gDownloadTotalSeries = total
+        gPrefs?.edit()
+            ?.putInt(DOWNLOAD_LIMIT_EPISODE_PREF, episode)
+            ?.putInt(DOWNLOAD_LIMIT_SERIES_PREF, series)
+            ?.putInt(DOWNLOAD_LIMIT_TOTAL_PREF, total)
+            ?.commit()
+    }
+
+    private fun readBooleanPrefFromDisk(key: String, defaultValue: Boolean = false): Boolean {
+        try {
+            val dataDir = try {
+                appCtx?.applicationInfo?.dataDir
+            } catch (_: Throwable) { null } ?: "/data/user/0/$gPkg"
+            val file = java.io.File(dataDir, "shared_prefs/lspilot_kejiyu.xml")
+            if (!file.isFile) return defaultValue
+            java.io.FileInputStream(file).use { input ->
+                val parser = android.util.Xml.newPullParser()
+                parser.setInput(input, "UTF-8")
+                var event = parser.eventType
+                while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                    if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "boolean") {
+                        if (parser.getAttributeValue(null, "name") == key) {
+                            return parser.getAttributeValue(null, "value")?.toBooleanStrictOrNull() ?: defaultValue
+                        }
+                    }
+                    event = parser.next()
+                }
+            }
+        } catch (_: Throwable) {}
+        return defaultValue
+    }
+
+    private fun readIntPrefFromDisk(key: String, defaultValue: Int): Int {
+        try {
+            val dataDir = try {
+                appCtx?.applicationInfo?.dataDir
+            } catch (_: Throwable) { null } ?: "/data/user/0/$gPkg"
+            val file = java.io.File(dataDir, "shared_prefs/lspilot_kejiyu.xml")
+            if (!file.isFile) return defaultValue
+            java.io.FileInputStream(file).use { input ->
+                val parser = android.util.Xml.newPullParser()
+                parser.setInput(input, "UTF-8")
+                var event = parser.eventType
+                while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                    if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "int") {
+                        if (parser.getAttributeValue(null, "name") == key) {
+                            return parser.getAttributeValue(null, "value")?.toIntOrNull() ?: defaultValue
+                        }
+                    }
+                    event = parser.next()
+                }
+            }
+        } catch (_: Throwable) {}
+        return defaultValue
+    }
+
+    private fun downloadUnlimitEnabledNow(): Boolean {
+        val master = readBooleanPrefFromDisk("master_on", gMasterOn)
+        val feature = readBooleanPrefFromDisk(DOWNLOAD_LIMIT_PREF, gDownloadLimitUnlimitOn)
+        return master && feature
+    }
+
+    private fun currentDownloadLimitValues(): Triple<Int, Int, Int> {
+        fun clean(v: Int): Int = v.coerceIn(1, 999_999_999)
+        val episode = clean(readIntPrefFromDisk(DOWNLOAD_LIMIT_EPISODE_PREF, gDownloadOneDayEpisode))
+        val series = clean(readIntPrefFromDisk(DOWNLOAD_LIMIT_SERIES_PREF, gDownloadOneDaySeries))
+        val total = clean(readIntPrefFromDisk(DOWNLOAD_LIMIT_TOTAL_PREF, gDownloadTotalSeries))
+        return Triple(episode, series, total)
+    }
+
+    private fun customDownloadLimitJson(): String {
+        val (episode, series, total) = currentDownloadLimitValues()
+        return "{\"one_day_max_episode_limit\":" + episode +
+            ",\"one_day_max_series_limit\":" + series +
+            ",\"total_max_series_limit\":" + total + "}"
+    }
+
+    private fun overwriteDownloadLimitObject(obj: Any?): Boolean {
+        if (obj == null) return false
+        val (episode, series, total) = currentDownloadLimitValues()
+        val values = mapOf("a" to episode, "b" to series, "c" to total)
+        return try {
+            var changed = false
+            for ((name, value) in values) {
+                try {
+                    val f = obj.javaClass.getDeclaredField(name)
+                    if (f.type == Int::class.javaPrimitiveType) {
+                        f.isAccessible = true
+                        f.setInt(obj, value)
+                        changed = true
+                    }
+                } catch (_: Throwable) {}
+            }
+            changed
+        } catch (_: Throwable) { false }
+    }
+    private fun resolveEntryId(
+        entry: String,
+        root: View?,
+        targetSet: MutableSet<Int> = gTargetIdSet,
+        logPrefix: String = "资源",
+    ) {
         if (root == null) return
-        try { val id = root.resources.getIdentifier(entry, "id", "com.phoenix.read"); if (id > 0 && gTargetIdSet.add(id)) LogUtil.info("资源 $entry ID: $id") } catch (_: Exception) {}
+        try {
+            val id = root.resources.getIdentifier(entry, "id", gPkg)
+            if (id > 0 && targetSet.add(id)) LogUtil.info("$logPrefix $entry ID: $id")
+        } catch (_: Exception) {}
+    }
+    private fun resolvePauseRestoreIds(root: View?) {
+        if (root == null) return
+        when (gNames.profileId) {
+            "OVERSEA-7.3.1.32" -> {
+                resolveEntryId("right_interact_container", root, gPauseRestoreIdSet, "暂停恢复资源")
+                resolveEntryId("ly_tools_bar_icon", root, gPauseRestoreIdSet, "暂停恢复资源")
+            }
+            "CN-7.3.3.18" -> resolveEntryId("fxu", root, gPauseRestoreIdSet, "暂停恢复资源")
+        }
     }
     private fun quickMatch(v: View?): Boolean {
         if (v == null) return false
         LogUtil.incr("matchCall")
         try { val id = v.id; if (id > 0 && gTargetIdSet.contains(id)) { LogUtil.incr("matchHit"); return true } } catch (_: Exception) {}
         try { if (v.javaClass.name in hideClasses) { LogUtil.incr("matchHit"); return true } } catch (_: Exception) {}
+        if (isFullscreenWatchControl(v)) { LogUtil.incr("matchHit"); return true }
+        if (isKnownFullSeriesEntry(v) || isHomeFullSeriesEntry(v)) { LogUtil.incr("matchHit"); return true }
+        if (isKnownBottomBackdrop(v) || isHomeBottomBackdropMarker(v)) { LogUtil.incr("matchHit"); return true }
         return false
     }
+
+    private fun isFullscreenWatchControl(v: View?): Boolean {
+        if (!gNames.structuralFullscreenWatch || v !is LinearLayout) return false
+        try { if (v.id > 0) return false } catch (_: Throwable) {}
+        val density = try { v.resources.displayMetrics.density.coerceAtLeast(0.1f) } catch (_: Throwable) { 1f }
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return false
+        val widthDp = width / density
+        val heightDp = height / density
+        val leftDp = v.paddingLeft / density
+        val topDp = v.paddingTop / density
+        val rightDp = v.paddingRight / density
+        val bottomDp = v.paddingBottom / density
+        val bgOk = try { v.background?.javaClass?.name == "android.graphics.drawable.GradientDrawable" } catch (_: Throwable) { false }
+        return bgOk && widthDp in 84f..94f && heightDp in 25f..32f &&
+            leftDp in 8f..12f && rightDp in 8f..12f &&
+            topDp in 4f..8f && bottomDp in 4f..8f
+    }
+
+    private fun isInsideCurrentActivityDecor(v: View?): Boolean {
+        if (v == null) return false
+        val decor = try { gCurrentActivity?.window?.decorView } catch (_: Throwable) { null } ?: return false
+        var node: View? = v
+        var guard = 0
+        while (node != null && guard++ < 80) {
+            if (node === decor) return true
+            node = node.parent as? View
+        }
+        return false
+    }
+
+    private fun viewEntryName(v: View?): String {
+        if (v == null) return ""
+        return try {
+            if (v.id > 0) v.resources.getResourceEntryName(v.id) else ""
+        } catch (_: Throwable) { "" }
+    }
+
+    private fun collectUiTexts(root: View?, maxDepth: Int = 4): List<String> {
+        if (root == null) return emptyList()
+        val out = ArrayList<String>(8)
+        fun walk(v: View, depth: Int) {
+            if (depth > maxDepth || out.size >= 24) return
+            if (v is TextView) {
+                val text = try { v.text?.toString()?.trim().orEmpty() } catch (_: Throwable) { "" }
+                if (text.isNotEmpty()) out.add(text)
+            }
+            val desc = try { v.contentDescription?.toString()?.trim().orEmpty() } catch (_: Throwable) { "" }
+            if (desc.isNotEmpty()) out.add(desc)
+            if (v is ViewGroup) {
+                for (i in 0 until v.childCount) walk(v.getChildAt(i), depth + 1)
+            }
+        }
+        walk(root, 0)
+        return out
+    }
+
+    private fun isRefreshText(text: String): Boolean {
+        val t = text.lowercase()
+        return text.contains("下拉刷新") || text.contains("刷新内容") || text.contains("松开刷新") ||
+            text.contains("正在刷新") || t.contains("pull to refresh") || t.contains("release to refresh") ||
+            t.contains("refreshing")
+    }
+
+    private fun isRefreshAccessoryContainer(v: View?): Boolean {
+        if (v !is ViewGroup || !isInsideCurrentActivityDecor(v)) return false
+        val density = try { v.resources.displayMetrics.density.coerceAtLeast(0.1f) } catch (_: Throwable) { 1f }
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return false
+        val hDp = height / density
+        if (hDp !in 39f..56f) return false
+        val screenW = try { v.resources.displayMetrics.widthPixels } catch (_: Throwable) { width }
+        if (screenW > 0 && width.toFloat() / screenW.toFloat() < 0.93f) return false
+
+        if (collectUiTexts(v, 4).any(::isRefreshText)) return true
+        val idName = viewEntryName(v)
+        if (idName == "root_layout") {
+            val parent = v.parent as? View
+            if (collectUiTexts(parent, 3).any(::isRefreshText)) return true
+        }
+        return false
+    }
+
+    private fun hideRefreshAccessory(v: View?) {
+        if (v == null || !gMasterOn || !gRefreshOff) return
+        try {
+            synchronized(gKnownRefreshAccessoryViews) { gKnownRefreshAccessoryViews[v] = true }
+            if (v.visibility != View.GONE) {
+                rememberViewState(v)
+
+                setModuleVisibility(v, View.GONE)
+                v.requestLayout()
+                (v.parent as? View)?.requestLayout()
+                LogUtil.incr("refreshAccessoryHide")
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun scanTreeRefreshAccessory(v: View?) {
+        if (v == null || !gMasterOn || !gRefreshOff) return
+        if (isRefreshAccessoryContainer(v)) {
+            hideRefreshAccessory(v)
+            return
+        }
+        if (v is ViewGroup) for (i in 0 until v.childCount) scanTreeRefreshAccessory(v.getChildAt(i))
+    }
+
+    private fun restoreRefreshAccessories() {
+        val views = synchronized(gKnownRefreshAccessoryViews) {
+            gKnownRefreshAccessoryViews.keys.toList().also { gKnownRefreshAccessoryViews.clear() }
+        }
+        for (v in views) restoreView(v)
+        if (views.isNotEmpty()) LogUtil.info("restore refresh accessories: ${views.size}")
+    }
+
+    private fun isHomeFullSeriesEntry(v: View?): Boolean {
+        if (gPkg !in setOf(TargetNames.CN_PACKAGE, TargetNames.OVERSEA_PACKAGE) ||
+            v !is ViewGroup || !isInsideCurrentActivityDecor(v)) return false
+        synchronized(gKnownFullSeriesEntryViews) {
+            if (gKnownFullSeriesEntryViews.containsKey(v)) return true
+        }
+        if (v.javaClass.name != "android.widget.FrameLayout") return false
+        if (viewEntryName(v) != "root_layout") return false
+
+        val dm = try { v.resources.displayMetrics } catch (_: Throwable) { return false }
+        val density = dm.density.coerceAtLeast(0.1f)
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return false
+        val hDp = height / density
+        if (hDp !in 41f..47.5f) return false
+        if (width.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() < 0.94f) return false
+
+        val loc = IntArray(2)
+        try { v.getLocationOnScreen(loc) } catch (_: Throwable) { return false }
+
+        if (loc[1] < dm.heightPixels * 0.68f) return false
+
+        val texts = collectUiTexts(v, 5)
+        val matchedByText = texts.any { raw ->
+            val text = raw.replace(" ", "")
+            val lower = text.lowercase()
+            text.contains("观看完整漫剧") || text.contains("观看完整短剧") ||
+                text.contains("观看全集") || text.contains("完整剧集") ||
+                lower.contains("watchall") || lower.contains("allepisodes") || lower.contains("fullseries") ||
+                (text.contains("观看") && Regex("全\\d+集").containsMatchIn(text))
+        }
+        val matched = matchedByText || gPkg == TargetNames.OVERSEA_PACKAGE
+        if (!matched) return false
+
+        synchronized(gKnownFullSeriesEntryViews) { gKnownFullSeriesEntryViews[v] = true }
+        LogUtil.info("home full-series entry recognized: root_layout, h=${"%.1f".format(hDp)}dp")
+        return true
+    }
+
+    private fun isKnownFullSeriesEntry(v: View?): Boolean = if (v == null) false else
+        synchronized(gKnownFullSeriesEntryViews) { gKnownFullSeriesEntryViews.containsKey(v) }
+
+    private fun isHomeBottomBackdropMarker(v: View?): Boolean {
+        if (gPkg !in setOf(TargetNames.CN_PACKAGE, TargetNames.OVERSEA_PACKAGE) ||
+            v == null || !isInsideCurrentActivityDecor(v)) return false
+        val markerName = viewEntryName(v)
+        val markerMatched = when {
+            gPkg == TargetNames.OVERSEA_PACKAGE -> markerName == "bottom_tab_mask"
+            gNames.profileId == "CN-7.3.3.18" -> markerName == "ar9"
+            gNames.profileId == "CN-7.3.2.32" || gNames.profileId == "CN-7.3.1.32" -> markerName == "ar8"
+            else -> markerName == "ar9" || markerName == "ar8"
+        }
+        if (!markerMatched) return false
+        val dm = try { v.resources.displayMetrics } catch (_: Throwable) { return false }
+        val density = dm.density.coerceAtLeast(0.1f)
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return false
+        val hDp = height / density
+        if (hDp !in 50f..61f) return false
+        if (width.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() < 0.94f) return false
+        val loc = IntArray(2)
+        try { v.getLocationOnScreen(loc) } catch (_: Throwable) { return false }
+        return loc[1] + height >= dm.heightPixels * 0.94f
+    }
+
+    private fun isKnownBottomBackdrop(v: View?): Boolean = if (v == null) false else
+        synchronized(gKnownBottomBackdropViews) { gKnownBottomBackdropViews.containsKey(v) }
+
+    private fun isNativeMainBottomFrame(v: View?): Boolean {
+        if (gPkg !in setOf(TargetNames.CN_PACKAGE, TargetNames.OVERSEA_PACKAGE) || v == null) return false
+        return try {
+            val idName = viewEntryName(v)
+            v.javaClass.name == "com.dragon.read.widget.BottomTabFrameLayout" ||
+                (v is ViewGroup && (idName == "aot" || idName == "bottom_bar_layout"))
+        } catch (_: Throwable) { false }
+    }
+
+    private fun isNativeVideoFeedBottomMask(v: View?): Boolean {
+        if (gPkg !in setOf(TargetNames.CN_PACKAGE, TargetNames.OVERSEA_PACKAGE) || v == null) return false
+        return try {
+            val idName = viewEntryName(v)
+            when {
+                gPkg == TargetNames.OVERSEA_PACKAGE -> idName == "bottom_tab_mask"
+                gNames.profileId == "CN-7.3.3.18" -> idName == "ar9"
+                gNames.profileId == "CN-7.3.2.32" || gNames.profileId == "CN-7.3.1.32" -> idName == "ar8"
+                gPkg == TargetNames.CN_PACKAGE -> idName == "ar9" || idName == "ar8"
+                else -> false
+            }
+        } catch (_: Throwable) { false }
+    }
+
+    private fun rememberNativeNavBarColor(act: Activity?) {
+        if (act == null) return
+        try {
+            synchronized(gSavedNativeNavBarColors) {
+                if (!gSavedNativeNavBarColors.containsKey(act)) {
+                    gSavedNativeNavBarColors[act] = act.window.navigationBarColor
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun updateNativeNavBarRestoreColor(act: Activity?) {
+        if (act == null) return
+        try { synchronized(gSavedNativeNavBarColors) { gSavedNativeNavBarColors[act] = act.window.navigationBarColor } }
+        catch (_: Throwable) {}
+    }
+
+    private fun restoreNativeBottomWindowColor(act: Activity?) {
+        if (act == null || gNavBarOff) return
+        val color = synchronized(gSavedNativeNavBarColors) { gSavedNativeNavBarColors.remove(act) } ?: return
+        try {
+            act.window.navigationBarColor = color
+            if (Build.VERSION.SDK_INT >= 30) {
+                act.window.setDecorFitsSystemWindows(false)
+                act.window.decorView.windowInsetsController?.show(WindowInsets.Type.navigationBars())
+            }
+            act.window.decorView.requestApplyInsets()
+        } catch (_: Throwable) {}
+    }
+
+    private fun collapseNativeMainBottomFrame(v: View?) {
+        if (v == null || !gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        if (!isNativeMainBottomFrame(v)) return
+        try {
+            synchronized(gKnownMainBottomNavViews) { gKnownMainBottomNavViews[v] = true }
+            if (v.visibility != View.GONE) {
+                rememberViewState(v)
+                val oldHeight = if (v.height > 0) v.height else v.measuredHeight
+                setModuleVisibility(v, View.GONE)
+                LogUtil.info("底部原生栏已折叠 | pkg=$gPkg | id=${viewEntryName(v)} | h=${oldHeight}px")
+            }
+            v.requestLayout()
+            (v.parent as? View)?.requestLayout()
+            rememberNativeNavBarColor(gCurrentActivity)
+            applyBottomEdgeToEdge(gCurrentActivity, gNavBarOff)
+            LogUtil.incr("nativeBottomFrameCollapse")
+        } catch (e: Throwable) {
+            LogUtil.warn("collapse native BottomTabFrameLayout failed: $e")
+        }
+    }
+
+    private fun collapseNativeVideoFeedBottomMask(v: View?) {
+        if (v == null || !gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        if (!isNativeVideoFeedBottomMask(v)) return
+        try {
+            synchronized(gKnownBottomBackdropViews) { gKnownBottomBackdropViews[v] = true }
+            if (v.visibility != View.GONE) {
+                rememberViewState(v)
+                val oldHeight = if (v.height > 0) v.height else v.measuredHeight
+                setModuleVisibility(v, View.GONE)
+                LogUtil.info("短视频底部 mask 已折叠 | pkg=$gPkg | id=${viewEntryName(v)} | h=${oldHeight}px")
+            }
+            v.requestLayout()
+            (v.parent as? View)?.requestLayout()
+            LogUtil.incr("nativeVideoFeedBottomMaskCollapse")
+        } catch (e: Throwable) {
+            LogUtil.warn("collapse VideoFeedTabBottomMask failed: $e")
+        }
+    }
+
+    private fun findNativeMainBottomFrame(act: Activity?): View? {
+        if (act == null || gPkg !in setOf(TargetNames.CN_PACKAGE, TargetNames.OVERSEA_PACKAGE)) return null
+        val fieldCandidates = when (gPkg) {
+            TargetNames.CN_PACKAGE -> listOf("H", "G")
+            TargetNames.OVERSEA_PACKAGE -> listOf("G", "H")
+            else -> emptyList()
+        }
+        for (fieldName in fieldCandidates) {
+            try {
+                val byField = findFieldValue(act, fieldName) as? View
+                if (isNativeMainBottomFrame(byField)) return byField
+            } catch (_: Throwable) {}
+        }
+        val idCandidates = when (gPkg) {
+            TargetNames.CN_PACKAGE -> listOf("aot", "bottom_bar_layout")
+            TargetNames.OVERSEA_PACKAGE -> listOf("bottom_bar_layout", "aot")
+            else -> emptyList()
+        }
+        for (entry in idCandidates) {
+            try {
+                val id = act.resources.getIdentifier(entry, "id", gPkg)
+                if (id != 0) {
+                    val byId = act.findViewById<View>(id)
+                    if (isNativeMainBottomFrame(byId)) return byId
+                }
+            } catch (_: Throwable) {}
+        }
+        fun walk(v: View?): View? {
+            if (v == null) return null
+            if (isNativeMainBottomFrame(v)) return v
+            if (v is ViewGroup) for (i in 0 until v.childCount) {
+                val hit = walk(v.getChildAt(i))
+                if (hit != null) return hit
+            }
+            return null
+        }
+        return try { walk(act.window?.decorView) } catch (_: Throwable) { null }
+    }
+
+    private fun enforceNativeMainBottomHidden(act: Activity?) {
+        if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        collapseNativeMainBottomFrame(findNativeMainBottomFrame(act))
+    }
+
+    private fun findFeedViewport(root: View?): View? {
+        if (root == null) return null
+        try {
+            if (root.javaClass.name == "androidx.viewpager2.widget.ViewPager2") return root
+            val idName = viewEntryName(root)
+
+            if (idName == "kkk" || idName == "kij" || idName == "view_pager_container") return root
+        } catch (_: Throwable) {}
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val hit = findFeedViewport(root.getChildAt(i))
+                if (hit != null) return hit
+            }
+        }
+        return null
+    }
+
+    private fun reclaimFeedViewportBottomMargin(root: View?) {
+        if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        val pager = findFeedViewport(root) ?: return
+        try {
+            synchronized(gKnownFeedViewportViews) { gKnownFeedViewportViews[pager] = true }
+            val lp = pager.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+            val nativeBottom = lp.bottomMargin
+            if (nativeBottom > 0) {
+
+                synchronized(gFeedViewportNativeBottomMargins) {
+                    gFeedViewportNativeBottomMargins[pager] = nativeBottom
+                }
+                lp.bottomMargin = 0
+                pager.layoutParams = lp
+                pager.requestLayout()
+                (pager.parent as? View)?.requestLayout()
+                LogUtil.info("首页视频底部占位已回收 | pkg=$gPkg | id=${viewEntryName(pager)} | ${nativeBottom}px -> 0")
+                LogUtil.incr("feedViewportBottomMarginReclaim")
+            }
+        } catch (e: Throwable) {
+            LogUtil.warn("reclaim feed viewport bottom margin failed: $e")
+        }
+    }
+
+    private fun enforceKnownFeedViewportBottomMargin() {
+        if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        val views = synchronized(gKnownFeedViewportViews) { gKnownFeedViewportViews.keys.toList() }
+        for (pager in views) reclaimFeedViewportBottomMargin(pager)
+    }
+
+    private fun restoreFeedViewportBottomMargins(clear: Boolean = true) {
+        val entries = synchronized(gFeedViewportNativeBottomMargins) {
+            gFeedViewportNativeBottomMargins.entries.map { it.key to it.value }.also {
+                if (clear) gFeedViewportNativeBottomMargins.clear()
+            }
+        }
+        for ((pager, bottom) in entries) {
+            try {
+                val lp = pager.layoutParams as? ViewGroup.MarginLayoutParams ?: continue
+                if (lp.bottomMargin != bottom) {
+                    lp.bottomMargin = bottom
+                    pager.layoutParams = lp
+                    pager.requestLayout()
+                    (pager.parent as? View)?.requestLayout()
+                }
+            } catch (_: Throwable) {}
+        }
+        if (clear) synchronized(gKnownFeedViewportViews) { gKnownFeedViewportViews.clear() }
+        if (entries.isNotEmpty()) LogUtil.info("首页视频底部占位已恢复 | count=${entries.size}")
+    }
+
+    private fun reflectIntField(obj: Any?, name: String): Int? {
+        if (obj == null) return null
+        var c: Class<*>? = obj.javaClass
+        while (c != null) {
+            try {
+                val f = c.getDeclaredField(name)
+                f.isAccessible = true
+                return f.getInt(obj)
+            } catch (_: Throwable) {}
+            c = c.superclass
+        }
+        return null
+    }
+
+    private fun setReflectIntField(obj: Any?, name: String, value: Int): Boolean {
+        if (obj == null) return false
+        var c: Class<*>? = obj.javaClass
+        while (c != null) {
+            try {
+                val f = c.getDeclaredField(name)
+                f.isAccessible = true
+                f.setInt(obj, value)
+                return true
+            } catch (_: Throwable) {}
+            c = c.superclass
+        }
+        return false
+    }
+
+    private fun rememberBottomLayoutState(v: View) {
+        synchronized(gSavedBottomLayoutStates) {
+            if (gSavedBottomLayoutStates.containsKey(v)) return
+            val lp = v.layoutParams
+            val mlp = lp as? ViewGroup.MarginLayoutParams
+            gSavedBottomLayoutStates[v] = SavedBottomLayoutState(
+                width = lp?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                height = lp?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                paddingLeft = v.paddingLeft,
+                paddingTop = v.paddingTop,
+                paddingRight = v.paddingRight,
+                paddingBottom = v.paddingBottom,
+                marginLeft = mlp?.leftMargin,
+                marginTop = mlp?.topMargin,
+                marginRight = mlp?.rightMargin,
+                marginBottom = mlp?.bottomMargin,
+                bottomToTop = reflectIntField(lp, "bottomToTop"),
+                bottomToBottom = reflectIntField(lp, "bottomToBottom"),
+                goneBottomMargin = reflectIntField(lp, "goneBottomMargin"),
+            )
+        }
+    }
+
+    private fun restoreBottomLayoutReclaim() {
+        val entries = synchronized(gSavedBottomLayoutStates) {
+            val copy = gSavedBottomLayoutStates.entries.map { it.key to it.value }
+            gSavedBottomLayoutStates.clear()
+            copy
+        }
+        for ((v, st) in entries) {
+            try {
+                val lp = v.layoutParams
+                if (lp != null) {
+                    lp.width = st.width
+                    lp.height = st.height
+                    val mlp = lp as? ViewGroup.MarginLayoutParams
+                    if (mlp != null && st.marginLeft != null && st.marginTop != null &&
+                        st.marginRight != null && st.marginBottom != null) {
+                        mlp.setMargins(st.marginLeft, st.marginTop, st.marginRight, st.marginBottom)
+                    }
+                    st.bottomToTop?.let { setReflectIntField(lp, "bottomToTop", it) }
+                    st.bottomToBottom?.let { setReflectIntField(lp, "bottomToBottom", it) }
+                    st.goneBottomMargin?.let { setReflectIntField(lp, "goneBottomMargin", it) }
+                    v.layoutParams = lp
+                }
+                v.setPadding(st.paddingLeft, st.paddingTop, st.paddingRight, st.paddingBottom)
+                v.requestLayout()
+                (v.parent as? View)?.requestLayout()
+            } catch (_: Throwable) {}
+        }
+        if (entries.isNotEmpty()) LogUtil.info("restore bottom layout reclaim: ${entries.size}")
+    }
+
+    private fun isNear(value: Int, target: Int, tolerance: Int): Boolean =
+        kotlin.math.abs(value - target) <= tolerance
+
+    private fun reclaimBottomSpaceFromAr9(marker: View) {
+        if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        try {
+            val dm = marker.resources.displayMetrics
+            val density = dm.density.coerceAtLeast(0.1f)
+            val markerLoc = IntArray(2)
+            marker.getLocationOnScreen(markerLoc)
+            val markerTop = markerLoc[1]
+            val markerHeight = (if (marker.height > 0) marker.height else marker.measuredHeight).coerceAtLeast(1)
+            val tol = (12f * density).toInt().coerceAtLeast(8)
+            val minLargeHeight = (dm.heightPixels * 0.28f).toInt()
+
+            val anchorIds = linkedSetOf<Int>()
+            var idNode: View? = marker
+            var idDepth = 0
+            while (idNode != null && idDepth++ < 8) {
+                if (idNode.id > 0) anchorIds.add(idNode.id)
+                idNode = idNode.parent as? View
+            }
+
+            fun reclaimLargeBranch(root: View?, depth: Int = 0) {
+                if (root == null || depth > 4) return
+                try {
+                    val w = if (root.width > 0) root.width else root.measuredWidth
+                    val h = if (root.height > 0) root.height else root.measuredHeight
+                    if (w > 0 && h > minLargeHeight &&
+                        w.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() >= 0.82f) {
+                        val lp = root.layoutParams
+                        val mlp = lp as? ViewGroup.MarginLayoutParams
+                        val bottomMargin = mlp?.bottomMargin ?: 0
+                        val padBottom = root.paddingBottom
+                        val barLikeMin = (markerHeight * 0.55f).toInt()
+                        val barLikeMax = (markerHeight * 1.75f).toInt()
+                        var changed = false
+                        if (padBottom in barLikeMin..barLikeMax && padBottom > 0) {
+                            rememberBottomLayoutState(root)
+                            root.setPadding(root.paddingLeft, root.paddingTop, root.paddingRight, 0)
+                            changed = true
+                        }
+                        if (mlp != null && bottomMargin in barLikeMin..barLikeMax && bottomMargin > 0) {
+                            rememberBottomLayoutState(root)
+                            mlp.bottomMargin = 0
+                            root.layoutParams = mlp
+                            changed = true
+                        }
+                        if (changed) {
+                            root.requestLayout()
+                            LogUtil.incr("bottomInsetReclaim")
+                        }
+                    }
+                } catch (_: Throwable) {}
+                if (root is ViewGroup) {
+                    for (i in 0 until root.childCount) reclaimLargeBranch(root.getChildAt(i), depth + 1)
+                }
+            }
+
+            var branch: View = marker
+            var parent = marker.parent as? ViewGroup
+            var depth = 0
+            while (parent != null && depth++ < 7) {
+                val parentChildren = parent.childCount
+                for (i in 0 until parentChildren) {
+                    val child = parent.getChildAt(i)
+                    if (child === branch) continue
+                    try {
+                        val lp = child.layoutParams
+                        var changed = false
+
+                        val btt = reflectIntField(lp, "bottomToTop")
+                        if (btt != null && btt >= 0 && anchorIds.contains(btt)) {
+                            rememberBottomLayoutState(child)
+                            setReflectIntField(lp, "bottomToTop", -1)
+                            setReflectIntField(lp, "bottomToBottom", 0)
+                            setReflectIntField(lp, "goneBottomMargin", 0)
+                            child.layoutParams = lp
+                            changed = true
+                            LogUtil.info("bottom constraint reclaimed: ${child.javaClass.name}, anchor=$btt")
+                            LogUtil.incr("bottomConstraintReclaim")
+                        }
+
+                        val loc = IntArray(2)
+                        child.getLocationOnScreen(loc)
+                        val w = if (child.width > 0) child.width else child.measuredWidth
+                        val h = if (child.height > 0) child.height else child.measuredHeight
+                        val childBottom = loc[1] + h
+                        val looksLikeMainContent = w > 0 && h > minLargeHeight &&
+                            w.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() >= 0.82f &&
+                            loc[1] < markerTop - markerHeight
+                        if (looksLikeMainContent && isNear(childBottom, markerTop, tol) && lp != null) {
+                            val parentLoc = IntArray(2)
+                            parent.getLocationOnScreen(parentLoc)
+                            val parentH = if (parent.height > 0) parent.height else parent.measuredHeight
+                            val desiredHeight = parentLoc[1] + parentH - loc[1]
+                            val growBy = desiredHeight - h
+                            val maxGrow = (markerHeight * 1.8f).toInt().coerceAtLeast(markerHeight + tol)
+                            if (growBy > tol && growBy <= maxGrow) {
+                                rememberBottomLayoutState(child)
+                                lp.height = desiredHeight
+                                child.layoutParams = lp
+                                changed = true
+                                LogUtil.info("bottom content extended: ${child.javaClass.name}, ${h}px -> ${desiredHeight}px")
+                                LogUtil.incr("bottomHeightReclaim")
+                            }
+                        }
+
+                        if (looksLikeMainContent) reclaimLargeBranch(child)
+
+                        if (changed) {
+                            child.requestLayout()
+                            parent.requestLayout()
+                        }
+                    } catch (_: Throwable) {}
+                }
+                branch = parent
+                parent = parent.parent as? ViewGroup
+            }
+
+            val decor = gCurrentActivity?.window?.decorView
+            reclaimLargeBranch(decor)
+        } catch (e: Throwable) {
+            LogUtil.warn("reclaim bottom space from ar9 failed: $e")
+        }
+    }
+
+    private fun bottomBackdropCollapseTarget(marker: View): View {
+        val dm = try { marker.resources.displayMetrics } catch (_: Throwable) { return marker }
+        val density = dm.density.coerceAtLeast(0.1f)
+        var target: View = marker
+        var cur: View = marker
+        repeat(4) {
+            val parent = cur.parent as? View ?: return@repeat
+            val w = if (parent.width > 0) parent.width else parent.measuredWidth
+            val h = if (parent.height > 0) parent.height else parent.measuredHeight
+            if (w <= 0 || h <= 0) return@repeat
+            val hDp = h / density
+            val loc = IntArray(2)
+            try { parent.getLocationOnScreen(loc) } catch (_: Throwable) { return@repeat }
+            val fullWidth = w.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() >= 0.92f
+            val compact = hDp in 48f..128f
+            val nearBottom = loc[1] + h >= dm.heightPixels * 0.92f
+            if (!fullWidth || !compact || !nearBottom) return@repeat
+            target = parent
+            cur = parent
+        }
+        return target
+    }
+
+    private fun collapseHomeBottomBackdrop(marker: View?) {
+        if (marker == null || !gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
+
+        if (isNativeVideoFeedBottomMask(marker) || isHomeBottomBackdropMarker(marker) || isKnownBottomBackdrop(marker)) {
+            collapseNativeVideoFeedBottomMask(marker)
+            enforceNativeMainBottomHidden(gCurrentActivity)
+        }
+    }
+
+    private val mainBottomNavLabels = setOf("首页", "剧场", "商城", "赚钱", "我的")
+
+    private fun isMainBottomNavContainer(v: View?): Boolean {
+        if (gPkg != TargetNames.CN_PACKAGE || v !is ViewGroup || !isInsideCurrentActivityDecor(v)) return false
+        synchronized(gKnownMainBottomNavViews) { if (gKnownMainBottomNavViews.containsKey(v)) return true }
+        val density = try { v.resources.displayMetrics.density.coerceAtLeast(0.1f) } catch (_: Throwable) { 1f }
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return false
+        val hDp = height / density
+        if (hDp !in 38f..105f) return false
+        val dm = try { v.resources.displayMetrics } catch (_: Throwable) { null } ?: return false
+        if (width.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat() < 0.90f) return false
+        val loc = IntArray(2)
+        try { v.getLocationOnScreen(loc) } catch (_: Throwable) { return false }
+        if (loc[1] < dm.heightPixels * 0.55f) return false
+        val labels = collectUiTexts(v, 5).map { it.trim() }.toSet()
+        val hitCount = mainBottomNavLabels.count { target -> labels.any { it == target } }
+
+        var structuralSlots = 0
+        if (v.childCount in 4..7) {
+            for (i in 0 until v.childCount) {
+                val child = v.getChildAt(i) ?: continue
+                val cw = if (child.width > 0) child.width else child.measuredWidth
+                val ch = if (child.height > 0) child.height else child.measuredHeight
+                val cwRatio = cw.toFloat() / dm.widthPixels.coerceAtLeast(1).toFloat()
+                val chDp = ch / density
+                if (cwRatio in 0.12f..0.30f && chDp >= 24f) structuralSlots++
+            }
+        }
+        val nearBottom = loc[1] + height >= dm.heightPixels * 0.90f
+        val structuralMatch = nearBottom && (
+            structuralSlots >= 4 ||
+
+                (v.childCount == 5 && hDp in 48f..88f)
+            )
+        if (hitCount < 4 && !structuralMatch) return false
+        synchronized(gKnownMainBottomNavViews) { gKnownMainBottomNavViews[v] = true }
+        LogUtil.info("main bottom nav recognized: ${v.javaClass.name}, h=${"%.1f".format(hDp)}dp, labels=$hitCount, slots=$structuralSlots")
+        return true
+    }
+
+    private fun isKnownMainBottomNav(v: View?): Boolean = if (v == null) false else
+        synchronized(gKnownMainBottomNavViews) { gKnownMainBottomNavViews.containsKey(v) }
+
+    private fun shouldCollapseControl(v: View?): Boolean {
+        if (v == null) return false
+        val idName = viewEntryName(v)
+
+        if (idName == "iu1" || idName == "is7") return true
+        if (isKnownFullSeriesEntry(v) || isHomeFullSeriesEntry(v)) return true
+        if (isNativeMainBottomFrame(v) || isNativeVideoFeedBottomMask(v)) return true
+        if (isKnownBottomBackdrop(v) || isHomeBottomBackdropMarker(v)) return true
+        return isMainBottomNavContainer(v)
+    }
+
+    private fun installSeriesToolbarLayoutGuard(v: View?) {
+        if (gNames.seriesToolbarProfile == "none" || v !is ViewGroup) return
+        if (v.javaClass.name != "androidx.constraintlayout.widget.ConstraintLayout") return
+        try { if (v.id > 0) return } catch (_: Throwable) {}
+        synchronized(gSeriesGuardedViews) {
+            if (gSeriesGuardedViews.containsKey(v)) return
+            gSeriesGuardedViews[v] = true
+        }
+        try {
+            v.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+                if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) return@addOnLayoutChangeListener
+                val kind = seriesToolbarKind(view)
+                if (kind != 0) rememberSeriesToolbar(view, kind)
+                if (kind != 0 && view.visibility == View.VISIBLE) {
+                    rememberViewState(view)
+                    setModuleVisibility(view, View.INVISIBLE)
+                    LogUtil.incr("seriesLayoutGuardHide")
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun installSeriesToolbarGuardsInTree(v: View?) {
+        if (v == null || gNames.seriesToolbarProfile == "none") return
+        installSeriesToolbarLayoutGuard(v)
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) installSeriesToolbarGuardsInTree(v.getChildAt(i))
+        }
+    }
+
+    private fun seriesToolbarKind(v: View?): Int {
+        if (gNames.seriesToolbarProfile == "none" || v !is ViewGroup) return 0
+        if (v.javaClass.name != "androidx.constraintlayout.widget.ConstraintLayout") return 0
+
+        if (!isInsideCurrentActivityDecor(v)) return 0
+        try { if (v.id > 0) return 0 } catch (_: Throwable) {}
+        if (v.paddingLeft != 0 || v.paddingTop != 0 || v.paddingRight != 0 || v.paddingBottom != 0) return 0
+        try {
+            val lp = v.layoutParams
+            if (lp is ViewGroup.MarginLayoutParams &&
+                (lp.leftMargin != 0 || lp.topMargin != 0 || lp.rightMargin != 0 || lp.bottomMargin != 0)) return 0
+        } catch (_: Throwable) {}
+
+        val density = try { v.resources.displayMetrics.density.coerceAtLeast(0.1f) } catch (_: Throwable) { 1f }
+        val width = if (v.width > 0) v.width else v.measuredWidth
+        val height = if (v.height > 0) v.height else v.measuredHeight
+        if (width <= 0 || height <= 0) return 0
+        val widthDp = width / density
+        val heightDp = height / density
+        val parentWidth = ((v.parent as? View)?.width ?: 0).takeIf { it > 0 }
+            ?: try { v.resources.displayMetrics.widthPixels } catch (_: Throwable) { width }
+        val widthRatio = if (parentWidth > 0) width.toFloat() / parentWidth.toFloat() else 1f
+        val totalInsetDp = if (parentWidth >= width) (parentWidth - width) / density else 0f
+
+        when (gNames.seriesToolbarProfile) {
+            "oversea73132" -> {
+                val isTop = v.childCount == 9 && heightDp in 40f..48f &&
+                    (widthDp >= 400f || widthRatio >= 0.97f)
+                if (isTop) return 1
+                val isBottom = v.childCount == 3 && heightDp in 36f..44f &&
+                    (widthDp in 378f..408f || totalInsetDp in 24f..42f)
+                if (isBottom) return 2
+            }
+            "cn73318" -> {
+
+                val isTop = heightDp in 41f..47f && (widthDp >= 410f || widthRatio >= 0.97f)
+                if (isTop) return 1
+
+                val isBottom = heightDp in 36f..44f &&
+                    (widthDp in 378f..408f || totalInsetDp in 24f..42f)
+                if (isBottom) return 2
+            }
+        }
+        return 0
+    }
+
+    private fun rememberSeriesToolbar(v: View?, kind: Int) {
+        if (v == null || kind == 0) return
+        synchronized(gKnownSeriesToolbars) { gKnownSeriesToolbars[v] = kind }
+    }
+
+    private fun knownSeriesToolbarSnapshot(): List<Pair<View, Int>> = synchronized(gKnownSeriesToolbars) {
+        gKnownSeriesToolbars.entries.mapNotNull { (view, kind) ->
+            if (view.windowToken != null || view.isAttachedToWindow) Pair(view, kind) else null
+        }
+    }
+
+    private fun hideSeriesToolbarView(v: View?) {
+        if (v == null || !gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        val kind = seriesToolbarKind(v)
+        if (kind == 0) return
+        rememberSeriesToolbar(v, kind)
+        try {
+            if (v.visibility == View.VISIBLE) {
+                rememberViewState(v)
+                setModuleVisibility(v, View.INVISIBLE)
+                LogUtil.incr(if (kind == 1) "seriesTopHide" else "seriesBottomHide")
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun scanTreePlayer(v: View?) {
+        if (v == null || !gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) return
+        if (seriesToolbarKind(v) != 0) { hideSeriesToolbarView(v); return }
+        if (v is ViewGroup) for (i in 0 until v.childCount) scanTreePlayer(v.getChildAt(i))
+    }
+
+    private fun scanTreePlayerRestore(v: View?) {
+        if (v == null) return
+        val knownKind = synchronized(gKnownSeriesToolbars) { gKnownSeriesToolbars[v] ?: 0 }
+        val kind = if (knownKind != 0) knownKind else seriesToolbarKind(v)
+        if (kind != 0) {
+            rememberSeriesToolbar(v, kind)
+            restoreView(v)
+            return
+        }
+        if (v is ViewGroup) for (i in 0 until v.childCount) scanTreePlayerRestore(v.getChildAt(i))
+    }
+    private inline fun <T> internalViewMutation(block: () -> T): T {
+        val old = gInternalViewMutation.get() == true
+        gInternalViewMutation.set(true)
+        return try { block() } finally { gInternalViewMutation.set(old) }
+    }
+
+    private fun rememberViewState(v: View, desiredVisibility: Int? = null) {
+        synchronized(gSavedViewStates) {
+            val old = gSavedViewStates[v]
+            if (old == null) {
+                gSavedViewStates[v] = SavedViewState(desiredVisibility ?: v.visibility, v.alpha)
+            } else if (desiredVisibility != null) {
+
+                old.visibility = desiredVisibility
+            }
+        }
+    }
+
+    private fun setModuleVisibility(v: View, visibility: Int) {
+        internalViewMutation { v.visibility = visibility }
+    }
+
     private fun blindView(v: View?) {
         if (v == null || !gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
-        try { v.visibility = View.INVISIBLE; LogUtil.incr("blindOK") } catch (_: Exception) {}
+        try {
+
+            if (v.visibility != View.VISIBLE) return
+            rememberViewState(v)
+            val collapse = shouldCollapseControl(v)
+            setModuleVisibility(v, if (collapse) View.GONE else View.INVISIBLE)
+            if (collapse) {
+                v.requestLayout()
+                (v.parent as? View)?.requestLayout()
+                LogUtil.incr("collapseControl")
+            }
+            LogUtil.incr("blindOK")
+        } catch (_: Exception) {}
     }
+
     private fun restoreView(v: View?) {
         if (v == null) return
-        try { v.visibility = View.VISIBLE } catch (_: Exception) {}
-        try { v.alpha = 1.0f } catch (_: Exception) {}
-        // ★ 恢复后强制父容器重新布局，避免残留塌陷/黑条
+        val state = synchronized(gSavedViewStates) { gSavedViewStates.remove(v) } ?: return
+        try {
+            internalViewMutation {
+                v.alpha = state.alpha
+                v.visibility = state.visibility
+            }
+        } catch (_: Exception) {}
         try { v.requestLayout() } catch (_: Exception) {}
         try { (v.parent as? View)?.requestLayout() } catch (_: Exception) {}
     }
+
+    private fun restoreAllSavedViews() {
+        restoreFeedViewportBottomMargins(clear = true)
+        restoreBottomLayoutReclaim()
+        val entries = synchronized(gSavedViewStates) {
+            val copy = gSavedViewStates.entries.map { Pair(it.key, SavedViewState(it.value.visibility, it.value.alpha)) }
+            gSavedViewStates.clear()
+            copy
+        }
+        for ((v, state) in entries) {
+            try {
+                internalViewMutation {
+                    v.alpha = state.alpha
+                    v.visibility = state.visibility
+                }
+                v.requestLayout()
+                (v.parent as? View)?.requestLayout()
+            } catch (_: Throwable) {}
+        }
+        synchronized(gForcedShortMaskVisibility) { gForcedShortMaskVisibility.clear() }
+        synchronized(gCleanMaskViews) { gCleanMaskViews.clear() }
+        if (entries.isNotEmpty()) LogUtil.info("restore saved views: ${entries.size}")
+    }
+    private fun forceOnePauseRestoreView(v: View?) {
+        if (v == null) return
+        try {
+            synchronized(gPauseForcedStates) {
+                if (!gPauseForcedStates.containsKey(v)) {
+                    gPauseForcedStates[v] = PauseForcedState(
+                        v.visibility, v.alpha, v.translationX, v.translationY,
+                    )
+                }
+            }
+            internalViewMutation {
+                v.visibility = View.VISIBLE
+                v.alpha = 1f
+                v.translationX = 0f
+                v.translationY = 0f
+            }
+            v.requestLayout()
+        } catch (_: Throwable) {}
+    }
+
+    private fun scanTreePauseRestore(v: View?) {
+        if (v == null) return
+        try {
+            if (v.id > 0 && gPauseRestoreIdSet.contains(v.id)) {
+                forceOnePauseRestoreView(v)
+            }
+        } catch (_: Throwable) {}
+        if (v is ViewGroup) for (i in 0 until v.childCount) scanTreePauseRestore(v.getChildAt(i))
+    }
+
+    private fun forcePauseEpisodeSelector(root: View?) {
+        if (root == null) return
+        if (root is TextView) {
+            val text = try { root.text?.toString()?.trim().orEmpty() } catch (_: Throwable) { "" }
+            val hit = text.contains("选集") || text.equals("Episodes", true) || text.startsWith("Episode", true)
+            if (hit) {
+                forceOnePauseRestoreView(root)
+
+                var node: View? = root.parent as? View
+                var depth = 0
+                var candidate: View? = null
+                while (node != null && depth++ < 4) {
+                    if (node is ViewGroup && node.width > 0 && node.height > 0) {
+                        val density = try { node.resources.displayMetrics.density.coerceAtLeast(0.1f) } catch (_: Throwable) { 1f }
+                        val h = node.height / density
+                        if (h in 30f..64f) { candidate = node; break }
+                    }
+                    node = node.parent as? View
+                }
+                if (candidate != null) {
+                    forceOnePauseRestoreView(candidate)
+                    rememberSeriesToolbar(candidate, 2)
+                }
+            }
+        }
+        if (root is ViewGroup) for (i in 0 until root.childCount) forcePauseEpisodeSelector(root.getChildAt(i))
+    }
+
+    private fun forcePauseRightAgencyTree(agency: Any) {
+        val rightRoot = findFieldValue(agency, "p") as? View ?: return
+        forceOnePauseRestoreView(rightRoot)
+        scanTreePauseRestore(rightRoot)
+
+        val decor = try { gCurrentActivity?.window?.decorView } catch (_: Throwable) { null }
+        var node = rightRoot.parent as? View
+        var depth = 0
+        while (node != null && depth++ < 3) {
+            if (node === decor) break
+            val suppressed = try {
+                node.visibility != View.VISIBLE ||
+                    node.alpha < 0.99f ||
+                    java.lang.Math.abs(node.translationX) > 1f ||
+                    java.lang.Math.abs(node.translationY) > 1f
+            } catch (_: Throwable) { false }
+            if (suppressed) forceOnePauseRestoreView(node)
+            node = node.parent as? View
+        }
+    }
+
+    private fun forcePauseRestoreControls() {
+        if (!gMasterOn || !gRestoreControlsOnPause || !gVideoPaused) return
+
+        if (gPlayerOn) {
+            for ((toolbar, _) in knownSeriesToolbarSnapshot()) {
+                if (isInsideCurrentActivityDecor(toolbar)) forceOnePauseRestoreView(toolbar)
+            }
+            val decor = try { gCurrentActivity?.window?.decorView } catch (_: Throwable) { null }
+            forcePauseEpisodeSelector(decor)
+        }
+
+        if (gControlOn) {
+            for (root in collectAllWindows()) scanTreePauseRestore(root)
+
+            for (agency in rightViewAgencySnapshot()) {
+                try {
+                    forcePauseRightAgencyTree(agency)
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+    private fun restorePauseForcedViews() {
+        val entries = synchronized(gPauseForcedStates) {
+            val copy = gPauseForcedStates.entries.map { Pair(it.key, it.value) }
+            gPauseForcedStates.clear()
+            copy
+        }
+        for ((v, state) in entries) {
+            try {
+                internalViewMutation {
+                    v.visibility = state.visibility
+                    v.alpha = state.alpha
+                    v.translationX = state.translationX
+                    v.translationY = state.translationY
+                }
+                v.requestLayout()
+            } catch (_: Throwable) {}
+        }
+        if (entries.isNotEmpty()) LogUtil.info("pause restore temporary states restored: ${entries.size}")
+    }
+
     private fun isRedGuoAd(v: View?): Boolean {
         if (v == null) return false
         try { if (v is TextView && (v.text?.toString() ?: "").contains("红果")) return true } catch (_: Exception) {}
@@ -133,23 +1487,32 @@ object Hooks {
     private fun scanTreeQuick(v: View?) {
         if (v == null || !gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) return
         LogUtil.incr("scanTree")
+
+        if (isNativeMainBottomFrame(v)) { collapseNativeMainBottomFrame(v); return }
+        if (isNativeVideoFeedBottomMask(v)) { collapseNativeVideoFeedBottomMask(v); return }
+        if (isHomeBottomBackdropMarker(v)) { collapseHomeBottomBackdrop(v); return }
+        if (isKnownBottomBackdrop(v)) { blindView(v); return }
+
+        if (isMainBottomNavContainer(v)) { blindView(v); return }
         if (quickMatch(v)) { blindView(v); return }
         if (v is ViewGroup) for (i in 0 until v.childCount) scanTreeQuick(v.getChildAt(i))
     }
     private fun restoreAllControls() {
         mainHandler.post {
+            restoreFeedViewportBottomMargins(clear = false)
+            restoreBottomLayoutReclaim()
             restoreShortVideoNativeControls()
             val roots = collectAllWindows()
             for (root in roots) {
                 scanTreeRestore(root)
+                scanTreePlayerRestore(root)
                 scanTreeProgressRestore(root)
             }
+
+            if (gRestoreControlsOnPause && gVideoPaused) forcePauseRestoreControls()
         }
     }
 
-    // 首页短剧使用自己的“清屏”状态机。只恢复 View.visibility 并不会退出清屏，
-    // 下一帧仍会被 App 隐藏，所以暂停时必须同步通知 ov4.i -> dw4.t.za(false, true)。
-    // 反过来也一样：只把按钮设成 INVISIBLE 不会清掉 c3 播放器遮罩，画面会整体发暗。
     private fun registerShortVideoHolder(holder: Any?, playbackState: Int? = null) {
         if (holder == null) return
         val now = android.os.SystemClock.uptimeMillis()
@@ -193,6 +1556,85 @@ object Hooks {
             clazz = clazz.superclass
         }
         return null
+    }
+
+    private fun registerRightViewAgency(agency: Any?) {
+        if (agency == null) return
+        synchronized(gRightViewAgencies) {
+            val it = gRightViewAgencies.iterator()
+            while (it.hasNext()) {
+                val current = it.next().get()
+                if (current == null || current === agency) it.remove()
+            }
+            gRightViewAgencies.add(java.lang.ref.WeakReference(agency))
+        }
+    }
+
+    private fun rightViewAgencySnapshot(): List<Any> = synchronized(gRightViewAgencies) {
+        val result = mutableListOf<Any>()
+        val it = gRightViewAgencies.iterator()
+        while (it.hasNext()) {
+            val agency = it.next().get()
+            if (agency == null) it.remove() else result.add(agency)
+        }
+        result
+    }
+
+    private fun rightViewAgencyRoot(agency: Any): View? = findFieldValue(agency, "p") as? View
+
+    private fun isRightViewAgencyVisible(agency: Any): Boolean {
+        val rightView = rightViewAgencyRoot(agency) ?: return false
+        return try {
+            rightView.windowToken != null && rightView.width > 0 && rightView.height > 0
+        } catch (_: Throwable) { false }
+    }
+
+    private fun isAgencyInCurrentActivityWindow(agency: Any): Boolean {
+        val rightView = rightViewAgencyRoot(agency) ?: return false
+        val currentToken = try { gCurrentActivity?.window?.decorView?.windowToken } catch (_: Throwable) { null }
+
+        return try {
+            if (currentToken == null) {
+                rightView.windowToken != null && rightView.isAttachedToWindow
+            } else {
+                rightView.windowToken === currentToken && rightView.isAttachedToWindow
+            }
+        } catch (_: Throwable) { false }
+    }
+
+    private fun openCurrentCommentFromDoubleTap(): Boolean {
+        if (!gMasterOn || !gDoubleTapCommentOn) return false
+        val snapshot = rightViewAgencySnapshot()
+        if (snapshot.isEmpty()) return false
+
+        val currentWindow = snapshot.filter { isAgencyInCurrentActivityWindow(it) }.asReversed()
+        val visibleFallback = snapshot.filter { isRightViewAgencyVisible(it) }.asReversed()
+        val candidates = if (currentWindow.isNotEmpty()) currentWindow else visibleFallback
+
+        for (agency in candidates) {
+            try {
+                var clazz: Class<*>? = agency.javaClass
+                var method: java.lang.reflect.Method? = null
+                while (clazz != null && method == null) {
+                    method = try {
+                        clazz.getDeclaredMethod(
+                            gNames.rightViewAgencyEventMethod,
+                            android.os.Bundle::class.java,
+                            String::class.java,
+                        ).apply { isAccessible = true }
+                    } catch (_: Throwable) { null }
+                    clazz = clazz.superclass
+                }
+                if (method == null) continue
+                method.invoke(agency, android.os.Bundle(), "show_comment_dialog")
+                LogUtil.incr("doubleTapOpenComment")
+                LogUtil.info("双击评论事件已发送 | profile=${gNames.profileId} | agency=${agency.javaClass.name}.${gNames.rightViewAgencyEventMethod}")
+                return true
+            } catch (e: Throwable) {
+                LogUtil.warn("双击打开评论区失败(${agency.javaClass.name}): $e")
+            }
+        }
+        return false
     }
 
     private fun registerShortSeriesFragment(fragment: Any?) {
@@ -261,13 +1703,45 @@ object Hooks {
         return gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)
     }
 
-    // 红果 7.3.1.32 的 dw4.t.z3(true) 是“清屏时移除播放器遮罩”的原生入口。
-    // 这里不改 TextureView/Surface、alpha、屏幕亮度或颜色空间，只同步遮罩本身。
+    private fun rememberAndForceShortVideoMaskInvisible(holder: Any) {
+        try {
+            val mask = findFieldValue(holder, gNames.shortMaskField) as? View ?: return
+            if (mask.visibility != View.VISIBLE) return
+            synchronized(gForcedShortMaskVisibility) {
+                if (!gForcedShortMaskVisibility.containsKey(mask)) {
+                    gForcedShortMaskVisibility[mask] = mask.visibility
+                }
+            }
+            rememberViewState(mask)
+            synchronized(gCleanMaskViews) { gCleanMaskViews[mask] = true }
+            setModuleVisibility(mask, View.INVISIBLE)
+            LogUtil.incr("shortMaskDirectFallback")
+        } catch (e: Throwable) {
+            LogUtil.warn("force short-video mask invisible failed: ${holder.javaClass.name}: $e")
+        }
+    }
+
+    private fun restoreForcedShortVideoMask(holder: Any) {
+        try {
+            val mask = findFieldValue(holder, gNames.shortMaskField) as? View ?: return
+            val original = synchronized(gForcedShortMaskVisibility) {
+                gForcedShortMaskVisibility.remove(mask)
+            } ?: return
+
+            synchronized(gCleanMaskViews) { gCleanMaskViews.remove(mask) }
+            val saved = synchronized(gSavedViewStates) { gSavedViewStates[mask] }
+            if (saved != null) restoreView(mask) else internalViewMutation { mask.visibility = original }
+            LogUtil.incr("shortMaskDirectRestore")
+        } catch (e: Throwable) {
+            LogUtil.warn("restore short-video mask failed: ${holder.javaClass.name}: $e")
+        }
+    }
+
     private fun setOneShortVideoMaskClear(holder: Any, clear: Boolean) {
         try {
-            val mask = findFieldValue(holder, "c3") as? View
-            if (clear && mask != null && mask.visibility == View.INVISIBLE) return
-            holder.javaClass.getMethod("z3", Boolean::class.java).invoke(holder, clear)
+
+            if (clear) rememberAndForceShortVideoMaskInvisible(holder)
+            else restoreForcedShortVideoMask(holder)
         } catch (e: Throwable) {
             LogUtil.warn("set short-video mask clear=$clear failed: ${holder.javaClass.name}: $e")
         }
@@ -282,20 +1756,58 @@ object Hooks {
                 setOneShortVideoMaskClear(holder, true)
                 handledVisibleHolder = true
             }
-            // RecyclerView 刚绑定、尚未完成可见区域计算时，最近 Holder 作为一次性兜底。
+
             if (!handledVisibleHolder) holders.firstOrNull()?.first?.let {
                 setOneShortVideoMaskClear(it, true)
             }
             return
         }
 
-        // 关闭模块或“隐藏控件”后，把模块曾强制清掉的遮罩还给 App 的原生 w3 状态。
-        // 暂停恢复分支由 za(false, true) 完整处理，不在这里重复覆盖。
-        if (!gMasterOn || !gControlOn) {
-            for ((holder, _) in holders) {
-                val nativeClear = findFieldValue(holder, "w3") as? Boolean ?: continue
-                setOneShortVideoMaskClear(holder, nativeClear)
-            }
+        if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) {
+            for ((holder, _) in holders) restoreForcedShortVideoMask(holder)
+        }
+    }
+
+    private fun registerCnHomeFragment(fragment: Any?) {
+        if (fragment == null || gPkg != "com.phoenix.read") return
+        synchronized(gCnHomeFragments) {
+            gCnHomeFragments.removeAll { it.get() == null }
+            val old = gCnHomeFragments.firstOrNull { it.get() === fragment }
+            if (old != null) gCnHomeFragments.remove(old)
+            gCnHomeFragments.add(java.lang.ref.WeakReference(fragment))
+        }
+    }
+
+    private fun cnHomeFragmentSnapshot(): List<Any> = synchronized(gCnHomeFragments) {
+        val result = mutableListOf<Any>()
+        val it = gCnHomeFragments.iterator()
+        while (it.hasNext()) {
+            val item = it.next().get()
+            if (item == null) it.remove() else result.add(item)
+        }
+        result
+    }
+
+    private fun forceCnHomeFragmentMaskInvisible(fragment: Any) {
+        if (gPkg != "com.phoenix.read" || !shouldForceShortVideoCleanMask()) return
+        try {
+            val fieldName = gNames.homeFragmentMaskField
+            if (fieldName.isBlank()) return
+            val mask = findFieldValue(fragment, fieldName) as? View ?: return
+            if (mask.visibility != View.VISIBLE) return
+            rememberViewState(mask)
+            synchronized(gCleanMaskViews) { gCleanMaskViews[mask] = true }
+            setModuleVisibility(mask, View.INVISIBLE)
+            LogUtil.incr("homeFragmentMaskHide")
+        } catch (e: Throwable) {
+            LogUtil.warn("home fragment mask hide failed: $e")
+        }
+    }
+
+    private fun syncCnHomeFragmentMasks() {
+        if (gPkg != "com.phoenix.read" || !shouldForceShortVideoCleanMask()) return
+        for (fragment in cnHomeFragmentSnapshot().asReversed()) {
+            forceCnHomeFragmentMaskInvisible(fragment)
         }
     }
 
@@ -303,7 +1815,7 @@ object Hooks {
         if (!visible) return
         var managerHandled = false
         try {
-            val cleanScreenManager = findFieldValue(holder, "v3")
+            val cleanScreenManager = findFieldValue(holder, gNames.shortCleanManagerField)
             if (cleanScreenManager != null) {
                 cleanScreenManager.javaClass.getDeclaredMethod("b", Boolean::class.java).apply {
                     isAccessible = true
@@ -313,10 +1825,9 @@ object Hooks {
         } catch (e: Throwable) {
             LogUtil.warn("exit short-video clean screen failed: $e")
         }
-        // 再通知当前 Holder：Manager 已经是 false 时会提前返回，但模块可能刚把 View
-        // 隐藏过，Holder 仍需重新分发一次“退出清屏”事件。
+
         try {
-            holder.javaClass.getMethod("za", Boolean::class.java, Boolean::class.java)
+            holder.javaClass.getMethod(gNames.shortControlsMethod, Boolean::class.java, Boolean::class.java)
                 .invoke(holder, false, true)
         } catch (e: Throwable) {
             if (!managerHandled) {
@@ -331,16 +1842,17 @@ object Hooks {
         for ((holder, _) in holders) {
             if (!isShortVideoHolderVisible(holder)) continue
             setOneShortVideoControlsVisible(holder, true)
+            restoreForcedShortVideoMask(holder)
             shortVideoHolderRoot(holder)?.requestLayout()
             restoredVisibleHolder = true
         }
-        // 页面刚切换或 RecyclerView 正在布局时可见区域可能尚未建立，最近实例作为兜底。
+
         if (!restoredVisibleHolder) holders.firstOrNull()?.first?.let {
             setOneShortVideoControlsVisible(it, true)
+            restoreForcedShortVideoMask(it)
         }
     }
 
-    // 保存实际播放器工具栏 Layer。暂停时仅放行 show 调用并不会让已经隐藏的控件出现，必须主动 show。
     private fun registerVideoToolbarLayer(layer: Any?) {
         if (layer == null) return
         var added = false
@@ -348,7 +1860,7 @@ object Hooks {
             gVideoToolbarLayers.removeAll { it.get() == null }
             val old = gVideoToolbarLayers.firstOrNull { it.get() === layer }
             if (old != null) {
-                // 最近有 show/hide 调用的 Layer 放到末尾，状态检测优先使用它，避免缓存页误判。
+
                 gVideoToolbarLayers.remove(old)
             } else {
                 added = true
@@ -370,13 +1882,47 @@ object Hooks {
         result
     }
 
+    private fun registerToolbarBaseLayer(layer: Any?) {
+        if (layer == null) return
+        synchronized(gToolbarBaseLayers) {
+            gToolbarBaseLayers.removeAll { it.get() == null }
+            val old = gToolbarBaseLayers.firstOrNull { it.get() === layer }
+            if (old != null) gToolbarBaseLayers.remove(old)
+            gToolbarBaseLayers.add(java.lang.ref.WeakReference(layer))
+        }
+    }
+
+    private fun toolbarBaseLayerSnapshot(): List<Any> = synchronized(gToolbarBaseLayers) {
+        val out = mutableListOf<Any>()
+        val it = gToolbarBaseLayers.iterator()
+        while (it.hasNext()) {
+            val v = it.next().get()
+            if (v == null) it.remove() else out.add(v)
+        }
+        out
+    }
+
+    private fun setToolbarBaseVisible(visible: Boolean) {
+        for (layer in toolbarBaseLayerSnapshot()) {
+            try {
+                var type: Class<*>? = layer.javaClass
+                var method: java.lang.reflect.Method? = null
+                while (type != null && method == null) {
+                    method = try { type.getDeclaredMethod("a", Boolean::class.java) } catch (_: Throwable) { null }
+                    type = type.superclass
+                }
+                method?.apply { isAccessible = true }?.invoke(layer, visible)
+            } catch (_: Throwable) {}
+        }
+    }
+
     private fun setOneVideoToolbarVisible(layer: Any, visible: Boolean) {
         try {
             when (layer.javaClass.name) {
                 "com.dragon.read.pages.video.layers.toolbarlayer.ToolbarLayerFixed" ->
-                    layer.javaClass.getDeclaredMethod("T", Boolean::class.java).apply { isAccessible = true }.invoke(layer, visible)
+                    layer.javaClass.getDeclaredMethod(gNames.fixedToolbarShowMethod, Boolean::class.java).apply { isAccessible = true }.invoke(layer, visible)
                 "com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer" ->
-                    layer.javaClass.getDeclaredMethod("Q", Boolean::class.java).apply { isAccessible = true }.invoke(layer, visible)
+                    layer.javaClass.getDeclaredMethod(gNames.customizeToolbarShowMethod, Boolean::class.java).apply { isAccessible = true }.invoke(layer, visible)
             }
         } catch (e: Throwable) {
             LogUtil.warn("set video toolbar visible=$visible failed: ${layer.javaClass.name}: $e")
@@ -385,13 +1931,26 @@ object Hooks {
 
     private fun setVideoToolbarsVisible(visible: Boolean) {
         mainHandler.post {
-            for (layer in videoToolbarLayerSnapshot()) setOneVideoToolbarVisible(layer, visible)
+            for (layer in videoToolbarLayerSnapshot()) {
+                setOneVideoToolbarVisible(layer, visible)
+
+                if (visible && layer.javaClass.name == "com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer") {
+                    try {
+                        layer.javaClass.getDeclaredMethod(
+                            gNames.customizeToolbarApplyMethod,
+                            Boolean::class.java,
+                            Boolean::class.java,
+                            Boolean::class.java,
+                        ).apply { isAccessible = true }.invoke(layer, true, false, false)
+                    } catch (_: Throwable) {}
+                }
+            }
+            setToolbarBaseVisible(visible)
         }
     }
 
-    // 通过 Layer 持有的 VideoStateInquirer 对命令入口进行二次确认。
     private fun detectPausedFromVideoLayers(): Boolean? {
-        // 优先检查最近活动的 Layer，避免 RecyclerView/页面缓存中的旧暂停实例覆盖当前播放状态。
+
         for (layer in videoToolbarLayerSnapshot().asReversed()) {
             try {
                 val inquirer = layer.javaClass.getMethod("getVideoStateInquirer").invoke(layer) ?: continue
@@ -420,21 +1979,29 @@ object Hooks {
         gVideoPaused = paused
         gLastVideoStateAt = android.os.SystemClock.uptimeMillis()
         gLastVideoStateReason = reason
-        // 即使功能开关暂时关闭也持续记录真实状态；这样用户在“已经暂停”时打开开关，
-        // 不必再播放/暂停一次才能生效。
+
         if (!gMasterOn || !gRestoreControlsOnPause) return
         if (paused) {
             restoreAllControls()
+            restoreNativeBottomWindowColor(gCurrentActivity)
             setVideoToolbarsVisible(true)
-            // 红果的清屏动画和 RecyclerView 绑定可能在同帧或下一帧重新隐藏，分两次校正。
-            for (delay in longArrayOf(120L, 360L)) mainHandler.postDelayed({
+            forcePauseRestoreControls()
+
+            val pauseRestoreDelays = if (gNames.profileId == "CN-7.3.2.32") {
+                longArrayOf(120L, 360L, 720L)
+            } else {
+                longArrayOf(120L, 360L)
+            }
+            for (delay in pauseRestoreDelays) mainHandler.postDelayed({
                 if (gMasterOn && gRestoreControlsOnPause && gVideoPaused) {
                     restoreAllControls()
                     setVideoToolbarsVisible(true)
+                    forcePauseRestoreControls()
                 }
             }, delay)
             if (changed) LogUtil.info("video paused: restore controls, reason=$reason")
         } else {
+            restorePauseForcedViews()
             if (gPlayerOn) setVideoToolbarsVisible(false)
             mainHandler.post { scanAllWindows() }
             if (changed) LogUtil.info("video resumed: hide controls, reason=$reason")
@@ -442,28 +2009,36 @@ object Hooks {
     }
     private fun scanTreeRestore(v: View?) {
         if (v == null) return
-        if (quickMatch(v) && !isRedGuoAd(v)) restoreView(v)
+        if ((quickMatch(v) || isKnownMainBottomNav(v) || isKnownFullSeriesEntry(v) || isKnownBottomBackdrop(v)) && !isRedGuoAd(v)) restoreView(v)
         if (v is ViewGroup) for (i in 0 until v.childCount) scanTreeRestore(v.getChildAt(i))
     }
 
-    // ===== 视频进度条 =====
     private fun isProgressBar(v: View?): Boolean {
         if (v == null) return false
-        try { if (v.javaClass.name == "qg4.t0") return true } catch (_: Exception) {}
+        try { val id = v.id; if (id > 0 && gProgressIdSet.contains(id)) return true } catch (_: Exception) {}
+        try { if (v.javaClass.name == gNames.progressBar) return true } catch (_: Exception) {}
         return false
     }
     private fun scanTreeProgress(v: View?) {
         if (v == null || !gMasterOn || !gProgressOff) return
-        if (isProgressBar(v)) { try { v.visibility = View.GONE; LogUtil.incr("progressHide") } catch (_: Exception) {}; return }
+        if (isProgressBar(v)) {
+            try {
+                if (v.visibility == View.VISIBLE) {
+                    rememberViewState(v)
+                    setModuleVisibility(v, View.GONE)
+                    LogUtil.incr("progressHide")
+                }
+            } catch (_: Exception) {}
+            return
+        }
         if (v is ViewGroup) for (i in 0 until v.childCount) scanTreeProgress(v.getChildAt(i))
     }
     private fun scanTreeProgressRestore(v: View?) {
         if (v == null) return
-        if (isProgressBar(v)) { try { v.visibility = View.VISIBLE } catch (_: Exception) {} }
+        if (isProgressBar(v)) restoreView(v)
         if (v is ViewGroup) for (i in 0 until v.childCount) scanTreeProgressRestore(v.getChildAt(i))
     }
 
-    // ===== 全窗口扫描 =====
     private fun collectAllWindows(): MutableList<View> {
         val roots = mutableListOf<View>()
         try {
@@ -471,43 +2046,76 @@ object Hooks {
             val instance = wmgClass.getMethod("getInstance").invoke(null)
             val mViewsField = wmgClass.getDeclaredField("mViews")
             mViewsField.isAccessible = true
-            val mViews = mViewsField.get(instance) as? ArrayList<View> ?: return roots
-            roots.addAll(mViews)
-        } catch (_: Exception) {}
+            val mViews = mViewsField.get(instance) as? ArrayList<View>
+            if (mViews != null) roots.addAll(mViews)
+        } catch (_: Throwable) {
+
+        }
+        try {
+            val decor = gCurrentActivity?.window?.decorView
+            if (decor != null && roots.none { it === decor }) roots.add(decor)
+        } catch (_: Throwable) {}
         return roots
     }
     private fun scanAllWindows() {
         try {
             if (gCurrentActivity == null) return
             val decor = gCurrentActivity!!.window.decorView
-            resolveEntryId("hh", decor)
-            resolveEntryId("book_container", decor)
+            gNames.hideIdNames.forEach { resolveEntryId(it, decor) }
+            gNames.progressIdNames.forEach { resolveEntryId(it, decor, gProgressIdSet, "进度条资源") }
+            resolvePauseRestoreIds(decor)
             val allRoots = collectAllWindows()
             if (allRoots.isEmpty() && decor != null) allRoots.add(decor)
             for (root in allRoots) {
                 if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) scanTreeQuick(root)
                 else scanTreeRestore(root)
+
+                if (root === decor) {
+                    if (gMasterOn && gPlayerOn && !(gRestoreControlsOnPause && gVideoPaused)) scanTreePlayer(root)
+                    else scanTreePlayerRestore(root)
+                }
             }
             if (gMasterOn && gProgressOff && !(gRestoreControlsOnPause && gVideoPaused)) for (root in allRoots) scanTreeProgress(root)
+            else for (root in allRoots) scanTreeProgressRestore(root)
+            if (gMasterOn && gRefreshOff) for (root in allRoots) scanTreeRefreshAccessory(root)
+            else if (!gRefreshOff) restoreRefreshAccessories()
             syncShortVideoMasks()
+            syncCnHomeFragmentMasks()
+            if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                enforceNativeMainBottomHidden(gCurrentActivity)
+                enforceKnownFeedViewportBottomMargin()
+            }
         } catch (_: Exception) {}
     }
 
-    // ===== 周期扫描 =====
     private var gScanRunnable: Runnable? = null
     private fun startPeriodicScan() {
         stopPeriodicScan()
         gScanRunnable = object : Runnable {
             override fun run() {
                 try {
+                    if (gMasterOn && gRestoreControlsOnPause && gVideoPaused) {
+                        forcePauseRestoreControls()
+                    }
                     if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
                         val allRoots = collectAllWindows()
                         for (root in allRoots) scanTreeQuick(root)
                         syncShortVideoMasks()
+                        syncCnHomeFragmentMasks()
+                        enforceNativeMainBottomHidden(gCurrentActivity)
+                        enforceKnownFeedViewportBottomMargin()
+                    }
+                    if (gMasterOn && gPlayerOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                        val decor = try { gCurrentActivity?.window?.decorView } catch (_: Throwable) { null }
+                        if (decor != null) scanTreePlayer(decor)
                     }
                     if (gMasterOn && gProgressOff && !(gRestoreControlsOnPause && gVideoPaused)) {
                         val allRoots2 = collectAllWindows()
                         for (root in allRoots2) scanTreeProgress(root)
+                    }
+                    if (gMasterOn && gRefreshOff) {
+                        val allRoots3 = collectAllWindows()
+                        for (root in allRoots3) scanTreeRefreshAccessory(root)
                     }
                 } catch (_: Exception) {}
                 mainHandler.postDelayed(this, 150)
@@ -521,13 +2129,12 @@ object Hooks {
     }
     private fun applyToCurrent() { mainHandler.post { scanAllWindows() } }
 
-    // ===== 状态栏 =====
     private fun isWindowedMode(act: Activity?): Boolean {
         if (act == null) return false
         try {
             if (Build.VERSION.SDK_INT >= 24 && act.isInMultiWindowMode) return true
             if (Build.VERSION.SDK_INT >= 26 && act.isInPictureInPictureMode) return true
-            // 部分国产 ROM 的自由小窗没有及时更新 isInMultiWindowMode，窗口尺寸再兜底一次。
+
             if (Build.VERSION.SDK_INT >= 30) {
                 val current = act.windowManager.currentWindowMetrics.bounds
                 val maximum = act.windowManager.maximumWindowMetrics.bounds
@@ -541,37 +2148,33 @@ object Hooks {
         return false
     }
 
-    // “隐藏状态栏”在全屏和自由小窗中都应生效。窗口模式只决定采用哪套实现，
-    // 不能决定是否恢复状态栏高度；否则小窗会重新得到一整条顶部占位。
     private fun shouldHideStatusBar(): Boolean {
         return gMasterOn && gStatusOn
     }
 
     private fun updateSeriesMallTopMargin(act: Activity, statusHidden: Boolean) {
         try {
-            // 红果 7.3.1.32：首页“漫画 / 推荐 / 搜索”容器的资源名是 is7。
-            // App 会给它手动加 status_bar_height；隐藏状态栏时必须同步归零。
-            val topBarId = act.resources.getIdentifier("is7", "id", "com.phoenix.read")
+
+            val topBarId = act.resources.getIdentifier("is7", "id", gPkg)
             if (topBarId == 0) return
             val topBar = act.findViewById<View>(topBarId) ?: return
             val params = topBar.layoutParams as? ViewGroup.MarginLayoutParams ?: return
-            val wantedTop = if (statusHidden) {
-                0
-            } else {
-                if (Build.VERSION.SDK_INT >= 30) {
-                    act.window.decorView.rootWindowInsets
-                        ?.getInsets(WindowInsets.Type.statusBars())
-                        ?.top
-                        ?: 0
-                } else {
-                    val statusId = act.resources.getIdentifier("status_bar_height", "dimen", "android")
-                    if (statusId == 0) 0 else act.resources.getDimensionPixelSize(statusId)
+            if (statusHidden) {
+                synchronized(gSavedTopMargins) {
+                    if (!gSavedTopMargins.containsKey(topBar)) gSavedTopMargins[topBar] = params.topMargin
                 }
-            }
-            if (params.topMargin != wantedTop) {
-                params.topMargin = wantedTop
-                topBar.layoutParams = params
-                topBar.requestLayout()
+                if (params.topMargin != 0) {
+                    params.topMargin = 0
+                    topBar.layoutParams = params
+                    topBar.requestLayout()
+                }
+            } else {
+                val original = synchronized(gSavedTopMargins) { gSavedTopMargins.remove(topBar) } ?: return
+                if (params.topMargin != original) {
+                    params.topMargin = original
+                    topBar.layoutParams = params
+                    topBar.requestLayout()
+                }
             }
         } catch (_: Exception) {}
     }
@@ -581,10 +2184,10 @@ object Hooks {
         configuration: android.content.res.Configuration,
     ) {
         try {
-            holder.javaClass.getMethod("j4", android.content.res.Configuration::class.java)
+            holder.javaClass.getMethod(gNames.shortConfigMethod, android.content.res.Configuration::class.java)
                 .invoke(holder, configuration)
-            // j4 记录新窗口边界；l4 是 App 自带的播放器尺寸复位方法。
-            holder.javaClass.getMethod("l4").invoke(holder)
+
+            holder.javaClass.getMethod(gNames.shortLayoutResetMethod).invoke(holder)
         } catch (_: Throwable) {}
         shortVideoHolderRoot(holder)?.requestLayout()
     }
@@ -592,18 +2195,15 @@ object Hooks {
     private fun refreshShortVideoWindowLayout(act: Activity) {
         val configuration = act.resources.configuration
 
-        // “第 xx 集”联播页由 ShortSeriesSingleFragment 持有当前 Holder。自由窗只改变
-        // screenWidthDp/screenHeightDp 时，它自己的 onConfigurationChanged 不会进入
-        // orientation 分支，因此先从 Fragment 取出当前 Holder，并刷新外围容器。
         for (fragment in shortSeriesFragmentSnapshot().asReversed()) {
             if (activityFromFragment(fragment) !== act) continue
-            for (fieldName in arrayOf("A3", "i", "j", "q", "l", "m", "r", "z3")) {
+            for (fieldName in gNames.seriesLayoutFields) {
                 val view = findFieldValue(fragment, fieldName) as? View ?: continue
                 try { view.requestLayout() } catch (_: Throwable) {}
             }
             try {
-                val pager = fragment.javaClass.getMethod("Mg").invoke(fragment) ?: continue
-                val holder = pager.javaClass.getMethod("p2").invoke(pager) ?: continue
+                val pager = fragment.javaClass.getMethod(gNames.seriesPagerGetter).invoke(fragment) ?: continue
+                val holder = pager.javaClass.getMethod(gNames.seriesHolderGetter).invoke(pager) ?: continue
                 registerShortVideoHolder(holder)
                 refreshOneShortVideoHolder(holder, configuration)
             } catch (_: Throwable) {}
@@ -615,16 +2215,13 @@ object Hooks {
         }
     }
 
-    // 自由小窗/分屏仍然需要隐藏顶部系统区域，但不能沿用全屏 FLAG、刘海穿透和旧式
-    // 沉浸参数。状态栏、自由窗 captionBar，以及 Android 14+ 的多任务 affordance 是
-    // 不同 Insets 类型，必须分别请求隐藏；ROM 不授予控制权时再使用透明标题背景兜底。
     private fun applyWindowedTop(act: Activity) {
         try {
             val window = act.window ?: return
             val decor = window.decorView
 
             fun applyOnce() {
-                // 先撤销全屏专用参数，避免自由窗被系统当成不兼容的全屏窗口。
+
                 window.clearFlags(
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
                         WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
@@ -638,8 +2235,7 @@ object Hooks {
                 }
 
                 if (Build.VERSION.SDK_INT >= 30) {
-                    // 清掉旧式标志后再调用 InsetsController；反过来执行会被清标志操作
-                    // 重新 show 状态栏。
+
                     @Suppress("DEPRECATION")
                     decor.systemUiVisibility = decor.systemUiVisibility and
                         View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN.inv() and
@@ -664,7 +2260,7 @@ object Hooks {
                             WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     }
                 } else {
-                    // Android 10 没有 WindowInsetsController，只在该版本使用兼容标志。
+
                     @Suppress("DEPRECATION")
                     decor.systemUiVisibility = decor.systemUiVisibility or
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
@@ -678,8 +2274,7 @@ object Hooks {
             }
 
             applyOnce()
-            // 自由窗动画结束时 ROM 可能再次派发一次可见 Insets，延迟校正只处理状态栏，
-            // 不重新添加任何全屏 Window flag。
+
             for (delay in longArrayOf(120L, 360L)) mainHandler.postDelayed({
                 if (!act.isFinishing && isWindowedMode(act) && gMasterOn && gStatusOn) {
                     applyOnce()
@@ -737,8 +2332,6 @@ object Hooks {
             val window = act.window ?: return
             val decor = window.decorView
 
-            // 让内容窗口真正覆盖状态栏区域，而不是只隐藏状态栏图标。
-            // 不安装自定义 InsetsListener，否则会替换 DecorView 自己的 inset 处理。
             if (Build.VERSION.SDK_INT >= 30) {
                 window.setDecorFitsSystemWindows(false)
             }
@@ -783,11 +2376,10 @@ object Hooks {
             val decor = window.decorView
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             if (Build.VERSION.SDK_INT >= 30) {
-                window.setDecorFitsSystemWindows(true)
-                var topTypes = WindowInsets.Type.statusBars() or WindowInsets.Type.captionBar()
-                if (Build.VERSION.SDK_INT >= 34) {
-                    topTypes = topTypes or WindowInsets.Type.systemOverlays()
-                }
+
+                window.setDecorFitsSystemWindows(false)
+                var topTypes = WindowInsets.Type.statusBars()
+                if (isWindowedMode(act)) topTypes = topTypes or WindowInsets.Type.captionBar()
                 decor.windowInsetsController?.show(topTypes)
             }
             if (Build.VERSION.SDK_INT >= 28) {
@@ -805,20 +2397,73 @@ object Hooks {
         } catch (_: Exception) {}
     }
 
-    // ===== 导航栏（小白条）=====
-    private fun applyNavBar(act: Activity?) {
-        if (act == null || !gMasterOn || !gNavBarOff) return
+    private fun applyBottomEdgeToEdge(act: Activity?, hideNavigationBar: Boolean) {
+        if (act == null) return
         try {
-            val decor = act.window.decorView
+            val window = act.window ?: return
+            val decor = window.decorView
+            if (Build.VERSION.SDK_INT >= 30) {
+                window.setDecorFitsSystemWindows(false)
+            }
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            window.navigationBarColor = Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= 29) {
+                try { window.isNavigationBarContrastEnforced = false } catch (_: Throwable) {}
+            }
             if (Build.VERSION.SDK_INT >= 30) {
                 decor.windowInsetsController?.apply {
-                    hide(WindowInsets.Type.navigationBars())
+                    if (hideNavigationBar) hide(WindowInsets.Type.navigationBars())
                     systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-            } else {
-                @Suppress("DEPRECATION") decor.systemUiVisibility = decor.systemUiVisibility or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             }
-        } catch (_: Exception) {}
+            @Suppress("DEPRECATION")
+            decor.systemUiVisibility = decor.systemUiVisibility or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                (if (hideNavigationBar) View.SYSTEM_UI_FLAG_HIDE_NAVIGATION else 0)
+            decor.requestApplyInsets()
+        } catch (e: Throwable) {
+            LogUtil.warn("apply bottom edge-to-edge failed: $e")
+        }
+    }
+
+    private fun extendKnownBottomContentRoot(act: Activity?, expectedGapPx: Int) {
+        if (act == null || expectedGapPx <= 0) return
+        try {
+            val id = act.resources.getIdentifier("hsw", "id", gPkg)
+            if (id == 0) return
+            val content = act.findViewById<View>(id) ?: return
+            val parent = content.parent as? View ?: return
+            val lp = content.layoutParams ?: return
+            val contentLoc = IntArray(2)
+            val parentLoc = IntArray(2)
+            content.getLocationOnScreen(contentLoc)
+            parent.getLocationOnScreen(parentLoc)
+            val contentH = if (content.height > 0) content.height else content.measuredHeight
+            val parentH = if (parent.height > 0) parent.height else parent.measuredHeight
+            if (contentH <= 0 || parentH <= 0) return
+            val desired = parentLoc[1] + parentH - contentLoc[1]
+            val gap = desired - contentH
+            val minGap = (expectedGapPx * 0.55f).toInt().coerceAtLeast(1)
+            val maxGap = (expectedGapPx * 1.8f).toInt().coerceAtLeast(expectedGapPx)
+            if (gap in minGap..maxGap && lp.height != desired) {
+                rememberBottomLayoutState(content)
+                lp.height = desired
+                content.layoutParams = lp
+                content.requestLayout()
+                (content.parent as? View)?.requestLayout()
+                LogUtil.info("hsw bottom extended: ${contentH}px -> ${desired}px, gap=${gap}px")
+                LogUtil.incr("bottomHswExtend")
+            }
+        } catch (e: Throwable) {
+            LogUtil.warn("extend hsw bottom failed: $e")
+        }
+    }
+
+    private fun applyNavBar(act: Activity?) {
+        if (act == null || !gMasterOn || !gNavBarOff) return
+        applyBottomEdgeToEdge(act, true)
     }
     private fun showNavBar(act: Activity?) {
         if (act == null) return
@@ -829,19 +2474,141 @@ object Hooks {
         } catch (_: Exception) {}
     }
 
-    // ===== 通知 =====
+    private fun resolutionRank(resolution: Any?): Int {
+        if (resolution == null) return Int.MIN_VALUE
+        val enumName = try { (resolution as? Enum<*>)?.name ?: "" } catch (_: Throwable) { "" }
+        val text = try { (enumName + " " + resolution.toString()).lowercase() } catch (_: Throwable) { enumName.lowercase() }
+        if ("auto" in text || "undefine" in text) return Int.MIN_VALUE
+
+        return when {
+            "eightk" in text || "8k" in text -> 8000
+            "fourk" in text || "4k" in text || "2160" in text -> 4000
+            "twok" in text || "2k" in text || "1440" in text -> 2000
+            "extremelyhighplus" in text || "1080p+" in text -> 1081
+            "extremelyhigh" in text || "1080" in text -> 1080
+            "superhigh" in text || "720" in text -> 720
+            "h_high" in text || "540" in text -> 540
+
+            enumName.equals("High", true) || " 480p" in " $text" -> 480
+            "l_standard" in text || "240" in text -> 240
+            "standard" in text || "360" in text -> 360
+            else -> {
+
+                try {
+                    val m = resolution.javaClass.methods.firstOrNull { it.name == "getIndex" && it.parameterCount == 0 }
+                    ((m?.invoke(resolution) as? Number)?.toInt() ?: 0) - 10000
+                } catch (_: Throwable) { -10000 }
+            }
+        }
+    }
+
+    private fun findHighestResolution(model: Any?): Any? {
+        if (model == null) return null
+        return try {
+            val getter = model.javaClass.methods.firstOrNull {
+                it.name == "getSupportResolutions" && it.parameterCount == 0
+            } ?: return null
+            val array = getter.invoke(model) ?: return null
+            val count = java.lang.reflect.Array.getLength(array)
+            var best: Any? = null
+            var bestRank = Int.MIN_VALUE
+            for (i in 0 until count) {
+                val r = java.lang.reflect.Array.get(array, i) ?: continue
+                val rank = resolutionRank(r)
+                if (rank > bestRank) {
+                    bestRank = rank
+                    best = r
+                }
+            }
+            best
+        } catch (e: Throwable) {
+            LogUtil.warn("最高画质：读取支持清晰度失败: $e")
+            null
+        }
+    }
+
+    private fun rememberAndApplyHighestResolution(engine: Any?, model: Any?) {
+        if (engine == null || model == null) return
+        val highest = findHighestResolution(model) ?: return
+        try {
+            gEngineMaxResolution[engine] = highest
+            LogUtil.info("最高画质：检测到 ${highest} rank=${resolutionRank(highest)}")
+        } catch (_: Throwable) {}
+        if (!gMasterOn || !gMaxQualityOn) return
+        try {
+            val method = engine.javaClass.methods.firstOrNull {
+                it.name == "configResolution" && it.parameterCount == 1 &&
+                    it.parameterTypes[0].isInstance(highest)
+            } ?: return
+            method.invoke(engine, highest)
+            LogUtil.incr("maxQualityApply")
+        } catch (e: Throwable) {
+            LogUtil.warn("最高画质：应用失败: $e")
+        }
+    }
+
+    private fun applyHighestViaController(controller: Any?, highest: Any?): Boolean {
+        if (controller == null || highest == null || gNames.resolutionApplyMethod.isBlank()) return false
+        return try {
+            var clazz: Class<*>? = controller.javaClass
+            var target: java.lang.reflect.Method? = null
+            while (clazz != null && target == null) {
+                target = clazz.declaredMethods.firstOrNull {
+                    it.name == gNames.resolutionApplyMethod && it.parameterCount == 1 &&
+                        it.parameterTypes[0].isInstance(highest)
+                }?.apply { isAccessible = true }
+                clazz = clazz.superclass
+            }
+            if (target == null) return false
+            target.invoke(controller, highest)
+            LogUtil.info("最高画质：原生控制器 ${gNames.resolutionApplyMethod}($highest)")
+            LogUtil.incr("maxQualityNativeApply")
+            true
+        } catch (e: Throwable) {
+            LogUtil.warn("最高画质：原生控制器应用失败: $e")
+            false
+        }
+    }
+
+    private fun applyHighestToKnownEngines() {
+        if (!gMasterOn || !gMaxQualityOn) return
+
+        val controllers = try {
+            synchronized(gControllerMaxResolution) { gControllerMaxResolution.entries.map { it.key to it.value } }
+        } catch (_: Throwable) { emptyList() }
+        for ((controller, highest) in controllers) applyHighestViaController(controller, highest)
+
+        val engines = try {
+            synchronized(gEngineMaxResolution) { gEngineMaxResolution.entries.map { it.key to it.value } }
+        } catch (_: Throwable) { emptyList() }
+        for ((engine, highest) in engines) {
+            try {
+                val method = engine.javaClass.methods.firstOrNull {
+                    it.name == "configResolution" && it.parameterCount == 1 &&
+                        it.parameterTypes[0].isInstance(highest)
+                } ?: continue
+                method.invoke(engine, highest)
+                LogUtil.incr("maxQualityApply")
+            } catch (_: Throwable) {}
+        }
+    }
+
     private fun createNotification(ctx: Context) {
         try {
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (!gNotificationMenuOn) {
+                nm.cancel(9999)
+                return
+            }
             if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("lspilot_toggle", "KEJIYU", NotificationManager.IMPORTANCE_LOW).apply { setSound(null, null) })
             val flag = if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE else PendingIntent.FLAG_UPDATE_CURRENT
-            fun pi(code: Int, action: String) = PendingIntent.getBroadcast(ctx, code, Intent(action).apply { setPackage("com.phoenix.read"); addFlags(Intent.FLAG_RECEIVER_FOREGROUND) }, flag)
+            fun pi(code: Int, action: String) = PendingIntent.getBroadcast(ctx, code, Intent(action).apply { setPackage(gPkg); addFlags(Intent.FLAG_RECEIVER_FOREGROUND) }, flag)
             val n = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, "lspilot_toggle") else @Suppress("DEPRECATION") android.app.Notification.Builder(ctx)
             n.setContentTitle("KEJIYU 模块"); n.setContentText(if (gMasterOn) "已启用" else "已停用"); n.setSmallIcon(android.R.drawable.ic_menu_view); n.setOngoing(true)
-            n.setContentIntent(pi(9999, "com.phoenix.read.LSPilot.TOGGLE"))
-            n.addAction(android.R.drawable.ic_menu_view, if (gMasterOn) "隐藏" else "显示", pi(10001, "com.phoenix.read.LSPilot.TOGGLE"))
-            n.addAction(android.R.drawable.ic_menu_edit, "面板", pi(10002, "com.phoenix.read.LSPilot.OPEN_PANEL"))
-            n.addAction(android.R.drawable.ic_menu_close_clear_cancel, "重启", pi(10003, "com.phoenix.read.LSPilot.RESTART"))
+            n.setContentIntent(pi(9999, "$gPkg.LSPilot.TOGGLE"))
+            n.addAction(android.R.drawable.ic_menu_view, if (gMasterOn) "隐藏" else "显示", pi(10001, "$gPkg.LSPilot.TOGGLE"))
+            n.addAction(android.R.drawable.ic_menu_edit, "面板", pi(10002, "$gPkg.LSPilot.OPEN_PANEL"))
+            n.addAction(android.R.drawable.ic_menu_close_clear_cancel, "重启", pi(10003, "$gPkg.LSPilot.RESTART"))
             nm.notify(9999, n.build())
         } catch (e: Exception) { LogUtil.error("通知", e) }
     }
@@ -850,59 +2617,736 @@ object Hooks {
         try {
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
-                    try { when (intent.action) { "com.phoenix.read.LSPilot.TOGGLE" -> doToggle(ctx); "com.phoenix.read.LSPilot.OPEN_PANEL" -> openPanel(); "com.phoenix.read.LSPilot.RESTART" -> restartApp(ctx) } } catch (e: Exception) { LogUtil.error("receiver", e) }
+                    try { when (intent.action) { "$gPkg.LSPilot.TOGGLE" -> doToggle(ctx); "$gPkg.LSPilot.OPEN_PANEL" -> openPanel(); "$gPkg.LSPilot.RESTART" -> restartApp(ctx) } } catch (e: Exception) { LogUtil.error("receiver", e) }
                 }
             }
-            val filter = IntentFilter("com.phoenix.read.LSPilot.TOGGLE").apply { addAction("com.phoenix.read.LSPilot.OPEN_PANEL"); addAction("com.phoenix.read.LSPilot.RESTART") }
+            val filter = IntentFilter("$gPkg.LSPilot.TOGGLE").apply { addAction("$gPkg.LSPilot.OPEN_PANEL"); addAction("$gPkg.LSPilot.RESTART") }
             if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
             else ctx.registerReceiver(receiver, filter)
             gReceiverRegistered = true
         } catch (e: Exception) { LogUtil.error("receiver", e) }
     }
-    private fun doToggle(ctx: Context) { gMasterOn = !gMasterOn; savePref("master_on", gMasterOn); createNotification(ctx); applyToCurrent(); LogUtil.info("总开关 → $gMasterOn") }
-    private fun restartApp(ctx: Context) { try { val i = ctx.packageManager.getLaunchIntentForPackage("com.phoenix.read"); if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK); ctx.startActivity(i) }; mainHandler.postDelayed({ android.os.Process.killProcess(android.os.Process.myPid()) }, 1000) } catch (_: Exception) {} }
-
-    // ===== 面板 =====
-    private fun isNightTheme(ctx: Context): Boolean { val tv = android.util.TypedValue(); if (ctx.theme.resolveAttribute(android.R.attr.isLightTheme, tv, true)) return tv.data == 0; return ((ctx.resources.configuration.uiMode and 48) == 32) }
-    private fun themeColor(ctx: Context, attr: Int, fallback: Int): Int { val a = ctx.theme.obtainStyledAttributes(intArrayOf(attr)); try { return a.getColor(0, fallback) } finally { a.recycle() } }
-    private fun makeRow(ctx: Context, label: String, defVal: Boolean): Pair<LinearLayout, Switch> {
-        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(16, 14, 16, 14) }
-        val tv = TextView(ctx).apply { text = label; textSize = 16f; setTextColor(themeColor(ctx, android.R.attr.textColorPrimary, if (gIsNight) 0xFFE0E0E0.toInt() else 0xFF202020.toInt())) }
-        row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f)); val sw = Switch(ctx).apply { isChecked = defVal }; row.addView(sw); return Pair(row, sw)
+    private fun doToggle(ctx: Context) {
+        gMasterOn = !gMasterOn
+        savePref("master_on", gMasterOn)
+        if (!gMasterOn) {
+            restoreAllSavedViews()
+            restoreShortVideoNativeControls()
+            setVideoToolbarsVisible(true)
+        }
+        createNotification(ctx)
+        applyToCurrent()
+        LogUtil.info("总开关 → $gMasterOn")
     }
-    private fun makeDivider(ctx: Context) = View(ctx).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1); setBackgroundColor(if (gIsNight) 0x33FFFFFF else 0x14000000) }
-    private fun showPanel(ctx: Context?) {
-        val act = ctx ?: gCurrentActivity ?: return
+    private fun restartApp(ctx: Context) { try { val i = ctx.packageManager.getLaunchIntentForPackage(gPkg); if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK); ctx.startActivity(i) }; mainHandler.postDelayed({ android.os.Process.killProcess(android.os.Process.myPid()) }, 1000) } catch (_: Exception) {} }
+
+    private data class PanelPalette(
+        val page: Int,
+        val surface: Int,
+        val surfaceAlt: Int,
+        val text: Int,
+        val textSecondary: Int,
+        val accent: Int,
+        val accentSoft: Int,
+        val divider: Int,
+        val switchOffThumb: Int,
+        val switchOffTrack: Int,
+        val switchOnTrack: Int,
+    )
+
+    private fun safeRgb(r: Int, g: Int, b: Int): Int = Color.rgb(r, g, b)
+    private fun safeArgb(a: Int, r: Int, g: Int, b: Int): Int = Color.argb(a, r, g, b)
+    private fun dp(ctx: Context, value: Float): Int = (value * ctx.resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun panelPalette(ctx: Context): PanelPalette {
+        val night = ((ctx.resources.configuration.uiMode and 0x30) == 0x20)
+        gIsNight = night
+        return if (night) {
+            PanelPalette(
+                page = safeRgb(15, 17, 20),
+                surface = safeRgb(25, 28, 32),
+                surfaceAlt = safeRgb(35, 39, 45),
+                text = safeRgb(245, 247, 250),
+                textSecondary = safeRgb(167, 175, 186),
+                accent = safeRgb(255, 107, 74),
+                accentSoft = safeRgb(52, 35, 31),
+                divider = safeArgb(30, 255, 255, 255),
+                switchOffThumb = safeRgb(210, 214, 220),
+                switchOffTrack = safeRgb(84, 90, 99),
+                switchOnTrack = safeRgb(151, 72, 55),
+            )
+        } else {
+            PanelPalette(
+                page = safeRgb(246, 247, 249),
+                surface = safeRgb(255, 255, 255),
+                surfaceAlt = safeRgb(241, 243, 246),
+                text = safeRgb(23, 25, 28),
+                textSecondary = safeRgb(108, 115, 126),
+                accent = safeRgb(255, 90, 60),
+                accentSoft = safeRgb(255, 237, 232),
+                divider = safeArgb(20, 0, 0, 0),
+                switchOffThumb = safeRgb(247, 247, 248),
+                switchOffTrack = safeRgb(194, 199, 206),
+                switchOnTrack = safeRgb(255, 168, 150),
+            )
+        }
+    }
+
+    private fun roundedBg(ctx: Context, color: Int, radiusDp: Float, strokeColor: Int? = null, strokeDp: Float = 0f): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(color)
+            cornerRadius = dp(ctx, radiusDp).toFloat()
+            if (strokeColor != null && strokeDp > 0f) setStroke(dp(ctx, strokeDp), strokeColor)
+        }
+    }
+
+    private fun styleSwitch(sw: Switch, p: PanelPalette) {
         try {
-            gIsNight = isNightTheme(act); val bgColor = themeColor(act, android.R.attr.colorBackground, if (gIsNight) 0xFF2C2C2C.toInt() else 0xFFFFFFFF.toInt())
-            val layout = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 4, 24, 8); try { background = GradientDrawable().apply { cornerRadius = 18f; setColor(bgColor) } } catch (_: Exception) {} }
-            layout.addView(TextView(act).apply { text = "KEJIYU"; textSize = 20f; setTypeface(Typeface.DEFAULT, Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0, 24, 0, 14); setTextColor(themeColor(act, android.R.attr.textColorPrimary, if (gIsNight) 0xFFE0E0E0.toInt() else 0xFF202020.toInt())) })
-            fun addSwitch(label: String, getter: () -> Boolean, setter: (Boolean) -> Unit, saveKey: String) {
-                val (row, sw) = makeRow(act, label, getter()); sw.setOnCheckedChangeListener { _, v -> setter(v); savePref(saveKey, v); if (saveKey != "player_bar" && saveKey != "ad_block") applyToCurrent() }; layout.addView(row); layout.addView(makeDivider(act))
+            val states = arrayOf(
+                intArrayOf(android.R.attr.state_checked),
+                intArrayOf(-android.R.attr.state_checked),
+            )
+            sw.thumbTintList = ColorStateList(states, intArrayOf(p.accent, p.switchOffThumb))
+            sw.trackTintList = ColorStateList(states, intArrayOf(p.switchOnTrack, p.switchOffTrack))
+        } catch (_: Throwable) {
+
+        }
+    }
+
+    private fun sectionTitle(ctx: Context, title: String, p: PanelPalette): TextView = TextView(ctx).apply {
+        text = title
+        textSize = 12f
+        setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+        setTextColor(p.textSecondary)
+        isAllCaps = false
+        setPadding(dp(ctx, 4f), dp(ctx, 18f), dp(ctx, 4f), dp(ctx, 5f))
+    }
+
+    private fun makePanelRow(
+        ctx: Context,
+        title: String,
+        description: String,
+        checked: Boolean,
+        p: PanelPalette,
+        emphasis: Boolean = false,
+        hasSubmenu: Boolean = false,
+    ): Pair<LinearLayout, Switch> {
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 15f), dp(ctx, 12f), dp(ctx, 12f), dp(ctx, 12f))
+            background = roundedBg(ctx, if (emphasis) p.accentSoft else p.surfaceAlt, 20f)
+            minimumHeight = dp(ctx, 64f)
+        }
+        val labels = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        labels.addView(TextView(ctx).apply {
+            text = title
+            textSize = 15f
+            setTypeface(Typeface.DEFAULT, if (emphasis) Typeface.BOLD else Typeface.NORMAL)
+            setTextColor(p.text)
+            includeFontPadding = false
+        })
+        labels.addView(TextView(ctx).apply {
+            text = description
+            textSize = 11.5f
+            setTextColor(p.textSecondary)
+            includeFontPadding = false
+            setPadding(0, dp(ctx, 4f), dp(ctx, 6f), 0)
+        })
+        row.addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (hasSubmenu) {
+
+            val handle = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(ctx, 5f), 0, dp(ctx, 4f), 0)
             }
-            addSwitch("模块总开关", { gMasterOn }, { gMasterOn = it }, "master_on"); addSwitch("隐藏状态栏", { gStatusOn }, { gStatusOn = it }, "status_bar")
-            addSwitch("隐藏控件", { gControlOn }, { gControlOn = it }, "control_hide"); addSwitch("播放器工具栏", { gPlayerOn }, { gPlayerOn = it }, "player_bar")
-            addSwitch("拦截广告/挂件", { gAdOn }, { gAdOn = it }, "ad_block"); addSwitch("禁用下拉刷新", { gRefreshOff }, { gRefreshOff = it }, "pull_refresh")
-            addSwitch("顶部区域拦截下滑", { gTopZoneOn }, { gTopZoneOn = it }, "top_zone")
-            addSwitch("解锁VIP", { gVipOn }, { gVipOn = it }, "vip_unlock")
-            addSwitch("显示VIP图标", { gVipIconOn }, { gVipIconOn = it }, "vip_icon")
-            addSwitch("隐藏底部小白条", { gNavBarOff }, { gNavBarOff = it }, "nav_bar_off")
-            addSwitch("隐藏视频进度条", { gProgressOff }, { gProgressOff = it; if (!it) { val roots = collectAllWindows(); for (root in roots) scanTreeProgressRestore(root) } }, "progress_off")
-            addSwitch("暂停后恢复所有控件", { gRestoreControlsOnPause }, {
-                gRestoreControlsOnPause = it
-                if (it) {
-                    refreshVideoPauseState("switch-enabled", gVideoPaused)
-                } else {
-                    // 保留后台记录到的真实播放状态，只立即恢复用户配置的隐藏规则。
-                    mainHandler.post { scanAllWindows() }
+            val heights = floatArrayOf(13f, 19f, 15f)
+            for (height in heights) {
+                handle.addView(View(ctx).apply {
+                    background = roundedBg(ctx, p.textSecondary, 1.5f)
+                }, LinearLayout.LayoutParams(dp(ctx, 2f), dp(ctx, height)).apply {
+                    leftMargin = dp(ctx, 1.5f)
+                    rightMargin = dp(ctx, 1.5f)
+                })
+            }
+            row.addView(handle, LinearLayout.LayoutParams(dp(ctx, 28f), dp(ctx, 30f)))
+        }
+        val sw = Switch(ctx).apply {
+            isChecked = checked
+            setShowText(false)
+            setPadding(dp(ctx, 8f), 0, 0, 0)
+        }
+        styleSwitch(sw, p)
+        row.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        return row to sw
+    }
+
+    private fun showDefaultSpeedEditor(act: Activity, p: PanelPalette, onSelected: (Float) -> Unit) {
+        try {
+            val dialog = Dialog(act)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            val root = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(act, 18f), dp(act, 18f), dp(act, 18f), dp(act, 16f))
+                background = roundedBg(act, p.page, 26f, p.divider, 1f)
+            }
+            root.addView(TextView(act).apply {
+                text = "默认倍速"
+                textSize = 20f
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(p.text)
+                includeFontPadding = false
+            })
+            root.addView(TextView(act).apply {
+                text = "选择后立即生效，并记住为以后播放的默认速度"
+                textSize = 11.5f
+                setTextColor(p.textSecondary)
+                includeFontPadding = false
+                setPadding(0, dp(act, 6f), 0, dp(act, 10f))
+            })
+
+            DEFAULT_SPEED_OPTIONS.forEach { speed ->
+                val selected = kotlin.math.abs(speed - gDefaultSpeed) < 0.001f
+                val row = LinearLayout(act).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(act, 15f), dp(act, 12f), dp(act, 15f), dp(act, 12f))
+                    background = roundedBg(act, if (selected) p.accentSoft else p.surfaceAlt, 16f)
+                    minimumHeight = dp(act, 50f)
                 }
+                row.addView(TextView(act).apply {
+                    text = formatSpeed(speed)
+                    textSize = 15f
+                    setTypeface(Typeface.DEFAULT, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (selected) p.accent else p.text)
+                    includeFontPadding = false
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(TextView(act).apply {
+                    text = if (selected) "✓" else ""
+                    textSize = 18f
+                    setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                    setTextColor(p.accent)
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                }, LinearLayout.LayoutParams(dp(act, 30f), ViewGroup.LayoutParams.WRAP_CONTENT))
+                row.setOnClickListener {
+                    saveDefaultSpeedValue(speed)
+
+                    if (!gDefaultSpeedOn) {
+                        gDefaultSpeedOn = true
+                        savePref(DEFAULT_SPEED_PREF, true)
+                    }
+                    onSelected(speed)
+                    dialog.dismiss()
+                    scheduleDefaultSpeedApply("menu-select")
+                    Toast.makeText(act, "默认倍速已设为 ${formatSpeed(speed)}", Toast.LENGTH_SHORT).show()
+                }
+                root.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(act, 7f)
+                })
+            }
+
+            dialog.setContentView(root)
+            dialog.setCanceledOnTouchOutside(true)
+            dialog.setOnShowListener {
+                try {
+                    dialog.window?.apply {
+                        setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                        attributes = attributes.apply { dimAmount = 0.62f }
+                        setLayout((act.resources.displayMetrics.widthPixels * 0.82f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+                    }
+                } catch (e: Throwable) { LogUtil.error("默认倍速窗口", e) }
+            }
+            dialog.show()
+        } catch (e: Throwable) {
+            LogUtil.error("默认倍速编辑", e)
+        }
+    }
+
+    private fun downloadLimitSummary(): String {
+        val (episode, series, total) = currentDownloadLimitValues()
+        return "单日集数 $episode  ·  单日剧数 $series  ·  总缓存 $total"
+    }
+
+    private fun showDownloadLimitEditor(act: Activity, p: PanelPalette, onSaved: () -> Unit) {
+        try {
+            val (episodeNow, seriesNow, totalNow) = currentDownloadLimitValues()
+            val dialog = Dialog(act)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+            val root = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(act, 18f), dp(act, 18f), dp(act, 18f), dp(act, 16f))
+                background = roundedBg(act, p.page, 26f, p.divider, 1f)
+            }
+            root.addView(TextView(act).apply {
+                text = "自定义下载限制"
+                textSize = 20f
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(p.text)
+                includeFontPadding = false
+            })
+            root.addView(TextView(act).apply {
+                text = "默认 99999。测试时可以改成 2、3 等小数值。"
+                textSize = 11.5f
+                setTextColor(p.textSecondary)
+                includeFontPadding = false
+                setPadding(0, dp(act, 6f), 0, dp(act, 12f))
+            })
+
+            fun field(label: String, value: Int): EditText {
+                root.addView(TextView(act).apply {
+                    text = label
+                    textSize = 12f
+                    setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                    setTextColor(p.textSecondary)
+                    includeFontPadding = false
+                    setPadding(dp(act, 2f), dp(act, 7f), 0, dp(act, 5f))
+                })
+                return EditText(act).apply {
+                    setText(value.toString())
+                    textSize = 15f
+                    setTextColor(p.text)
+                    setHintTextColor(p.textSecondary)
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                    setSingleLine(true)
+                    setSelectAllOnFocus(true)
+                    setPadding(dp(act, 13f), 0, dp(act, 13f), 0)
+                    background = roundedBg(act, p.surfaceAlt, 12f, p.divider, 1f)
+                    root.addView(this, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(act, 48f),
+                    ))
+                }
+            }
+
+            val episodeField = field("单日最大下载集数", episodeNow)
+            val seriesField = field("单日最大下载剧数", seriesNow)
+            val totalField = field("总缓存剧数上限", totalNow)
+
+            root.addView(TextView(act).apply {
+                text = "修改数值后需要强停红果并重新打开，确保主进程和 :downloader 的缓存配置全部刷新。"
+                textSize = 10.8f
+                setTextColor(p.accent)
+                includeFontPadding = false
+                setPadding(dp(act, 2f), dp(act, 12f), dp(act, 2f), dp(act, 4f))
+            })
+
+            val buttons = LinearLayout(act).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, dp(act, 12f), 0, 0)
+            }
+            val cancel = TextView(act).apply {
+                text = "取消"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(p.text)
+                background = roundedBg(act, p.surfaceAlt, 12f)
+                setOnClickListener { dialog.dismiss() }
+            }
+            val save = TextView(act).apply {
+                text = "保存"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = roundedBg(act, p.accent, 12f)
+                setOnClickListener {
+                    val episode = episodeField.text?.toString()?.trim()?.toIntOrNull()
+                    val series = seriesField.text?.toString()?.trim()?.toIntOrNull()
+                    val total = totalField.text?.toString()?.trim()?.toIntOrNull()
+                    if (episode == null || series == null || total == null ||
+                        episode !in 1..999_999_999 || series !in 1..999_999_999 || total !in 1..999_999_999
+                    ) {
+                        Toast.makeText(act, "请输入 1 ~ 999999999 的整数", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    saveDownloadLimitValues(episode, series, total)
+                    LogUtil.info("download limit custom values saved: episode=$episode series=$series total=$total")
+                    onSaved()
+                    dialog.dismiss()
+                    Toast.makeText(act, "已保存，需要强停红果后重新打开生效", Toast.LENGTH_LONG).show()
+                }
+            }
+            buttons.addView(cancel, LinearLayout.LayoutParams(0, dp(act, 44f), 1f).apply { rightMargin = dp(act, 6f) })
+            buttons.addView(save, LinearLayout.LayoutParams(0, dp(act, 44f), 1f).apply { leftMargin = dp(act, 6f) })
+            root.addView(buttons)
+
+            dialog.setContentView(root)
+            dialog.setCanceledOnTouchOutside(true)
+            dialog.setOnShowListener {
+                try {
+                    dialog.window?.apply {
+                        setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                        attributes = attributes.apply { dimAmount = 0.62f }
+                        setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                        setLayout((act.resources.displayMetrics.widthPixels * 0.86f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+                    }
+                } catch (e: Throwable) { LogUtil.error("下载限制编辑窗口", e) }
+            }
+            dialog.show()
+        } catch (e: Throwable) {
+            LogUtil.error("下载限制编辑", e)
+        }
+    }
+
+    private fun installPanelWatermark(target: View, ctx: Context, color: Int) {
+        try {
+            val text = "免费模块倒卖死全家"
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+
+                this.color = Color.argb(24, Color.red(color), Color.green(color), Color.blue(color))
+                textSize = 12.5f * ctx.resources.displayMetrics.scaledDensity
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val gapX = dp(ctx, 54f).toFloat()
+            val gapY = dp(ctx, 72f).toFloat()
+            val drawable = object : android.graphics.drawable.Drawable() {
+                override fun draw(canvas: android.graphics.Canvas) {
+                    val b = bounds
+                    if (b.width() <= 0 || b.height() <= 0) return
+                    val save = canvas.save()
+                    canvas.rotate(-24f, b.exactCenterX(), b.exactCenterY())
+                    val textW = paint.measureText(text)
+                    val stepX = textW + gapX
+                    var row = 0
+                    var y = -b.height().toFloat()
+                    val maxY = b.height() * 2f
+                    while (y < maxY) {
+                        var x = -b.width().toFloat() - if (row % 2 == 0) 0f else stepX / 2f
+                        val maxX = b.width() * 2f
+                        while (x < maxX) {
+                            canvas.drawText(text, x, y, paint)
+                            x += stepX
+                        }
+                        y += gapY
+                        row++
+                    }
+                    canvas.restoreToCount(save)
+                }
+
+                override fun setAlpha(alpha: Int) { paint.alpha = alpha.coerceIn(0, 255) }
+                override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+                @Suppress("DEPRECATION")
+                override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+            }
+            target.overlay.add(drawable)
+            target.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                drawable.setBounds(0, 0, v.width, v.height)
+                drawable.invalidateSelf()
+            }
+            target.post {
+                drawable.setBounds(0, 0, target.width, target.height)
+                drawable.invalidateSelf()
+            }
+        } catch (e: Throwable) {
+            LogUtil.error("面板水印", e)
+        }
+    }
+
+    private fun targetCompatLabel(ctx: Context): String {
+        try {
+            @Suppress("DEPRECATION")
+            val pi = ctx.packageManager.getPackageInfo(gPkg, 0)
+            val version = pi.versionName ?: gTargetVersionName
+            @Suppress("DEPRECATION")
+            val code = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
+            gTargetVersionName = version
+            gTargetVersionCode = code
+            val state = if (TargetNames.isSupported(gPkg, version)) "已适配" else "兼容表未列出"
+            return "$version  ·  versionCode $code  ·  $state\n${gNames.profileId}"
+        } catch (_: Throwable) {
+            return "$gTargetVersionName  ·  versionCode $gTargetVersionCode\n${gNames.profileId}"
+        }
+    }
+
+    private fun showPanel(ctx: Context?) {
+
+        val act: Activity = (ctx as? Activity) ?: gCurrentActivity ?: return
+        try {
+            val p = panelPalette(act)
+            val content = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(act, 16f), dp(act, 8f), dp(act, 16f), dp(act, 18f))
+                background = roundedBg(act, p.page, 28f)
+            }
+
+            val header = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(act, 6f), dp(act, 18f), dp(act, 6f), dp(act, 14f))
+            }
+            header.addView(TextView(act).apply {
+                text = "KEJIYU"
+                textSize = 25f
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(p.text)
+                includeFontPadding = false
+            })
+            header.addView(TextView(act).apply {
+                text = "红果综合模块  ·  ${BuildConfig.VERSION_NAME}"
+                textSize = 12f
+                setTextColor(p.textSecondary)
+                includeFontPadding = false
+                setPadding(0, dp(act, 5f), 0, 0)
+            })
+            content.addView(header)
+
+            content.addView(LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                background = roundedBg(act, p.surface, 22f, p.divider, 1f)
+                setPadding(dp(act, 15f), dp(act, 13f), dp(act, 15f), dp(act, 13f))
+                addView(TextView(act).apply {
+                    text = "当前兼容配置"
+                    textSize = 11f
+                    setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                    setTextColor(p.accent)
+                    includeFontPadding = false
+                })
+                addView(TextView(act).apply {
+                    text = targetCompatLabel(act)
+                    textSize = 12.5f
+                    setTextColor(p.text)
+                    includeFontPadding = false
+                    setPadding(0, dp(act, 6f), 0, 0)
+                })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(act, 4f)
+            })
+
+            fun addSwitch(
+                title: String,
+                description: String,
+                getter: () -> Boolean,
+                setter: (Boolean) -> Unit,
+                saveKey: String,
+                emphasis: Boolean = false,
+                onRowAction: (() -> Unit)? = null,
+            ): Pair<LinearLayout, Switch> {
+                val (row, sw) = makePanelRow(act, title, description, getter(), p, emphasis, onRowAction != null)
+                sw.setOnCheckedChangeListener { _, v ->
+                    setter(v)
+                    savePref(saveKey, v)
+                    if (saveKey != "ad_block") applyToCurrent()
+                }
+                row.setOnClickListener {
+                    if (onRowAction != null) onRowAction() else sw.isChecked = !sw.isChecked
+                }
+                content.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(act, 7f)
+                })
+                return row to sw
+            }
+
+            content.addView(sectionTitle(act, "核心", p))
+            addSwitch("模块总开关", "所有功能的总控制；关闭后恢复模块修改的界面", { gMasterOn }, {
+                gMasterOn = it
+                if (!it) {
+                    restoreAllSavedViews()
+                    restoreShortVideoNativeControls()
+                    restoreNativeBottomWindowColor(gCurrentActivity)
+                    setVideoToolbarsVisible(true)
+                }
+            }, "master_on", true)
+
+            content.addView(sectionTitle(act, "界面精简", p))
+            addSwitch("隐藏状态栏", "视频页面沉浸显示", { gStatusOn }, { gStatusOn = it }, "status_bar")
+            addSwitch("隐藏控件", "隐藏顶部/底部导航、作品信息和右侧互动等已适配区域", { gControlOn }, {
+                gControlOn = it
+                if (!it) {
+
+                    restoreAllSavedViews()
+                    restoreShortVideoNativeControls()
+                    restoreNativeBottomWindowColor(gCurrentActivity)
+                    mainHandler.postDelayed({ restoreShortVideoNativeControls(); scanAllWindows() }, 120L)
+                }
+            }, "control_hide")
+            addSwitch("选集相关功能", "隐藏联播页顶部和底部的选集相关控件", { gPlayerOn }, {
+                gPlayerOn = it
+                if (!it || (gRestoreControlsOnPause && gVideoPaused)) setVideoToolbarsVisible(true)
+                else setVideoToolbarsVisible(false)
+            }, "player_bar")
+            addSwitch("隐藏视频进度条", "隐藏首页和连续播放页的进度条", { gProgressOff }, {
+                gProgressOff = it
+                if (!it) {
+                    val roots = collectAllWindows()
+                    for (root in roots) scanTreeProgressRestore(root)
+                }
+            }, "progress_off")
+            addSwitch("隐藏底部小白条", "隐藏系统手势导航提示条", { gNavBarOff }, { gNavBarOff = it }, "nav_bar_off")
+            addSwitch("暂停后恢复所有控件", "暂停视频时临时恢复控件，继续播放后按规则隐藏", { gRestoreControlsOnPause }, {
+                gRestoreControlsOnPause = it
+                if (it) refreshVideoPauseState("switch-enabled", gVideoPaused)
+                else mainHandler.post { scanAllWindows() }
             }, "restore_controls_pause")
-            AlertDialog.Builder(act).setView(layout).setPositiveButton("关闭", null).show()
-        } catch (e: Exception) { LogUtil.error("面板", e) }
+
+            content.addView(sectionTitle(act, "播放与手势", p))
+            if (gNames.resolutionController.isNotBlank()) {
+                addSwitch("默认最高画质", "播放时自动选择当前视频支持的最高画质", { gMaxQualityOn }, {
+                    gMaxQualityOn = it
+                    if (it) mainHandler.post { applyHighestToKnownEngines() }
+                }, "max_quality")
+            }
+            lateinit var defaultSpeedRow: LinearLayout
+            lateinit var defaultSpeedSwitch: Switch
+            val defaultSpeedPair = addSwitch(
+                "默认倍速",
+                defaultSpeedSummary(),
+                { gDefaultSpeedOn },
+                { enabled ->
+                    gDefaultSpeedOn = enabled
+                    if (enabled) scheduleDefaultSpeedApply("switch-enabled")
+                },
+                DEFAULT_SPEED_PREF,
+                onRowAction = {
+                    showDefaultSpeedEditor(act, p) { _ ->
+                        try {
+                            val labels = defaultSpeedRow.getChildAt(0) as? ViewGroup
+                            (labels?.getChildAt(1) as? TextView)?.text = defaultSpeedSummary()
+                            if (!defaultSpeedSwitch.isChecked) defaultSpeedSwitch.isChecked = true
+                        } catch (_: Throwable) {}
+                    }
+                },
+            )
+            defaultSpeedRow = defaultSpeedPair.first
+            defaultSpeedSwitch = defaultSpeedPair.second
+            addSwitch("双击打开评论区", "替换原双击点赞动作，双击直接打开评论", { gDoubleTapCommentOn }, { gDoubleTapCommentOn = it }, "double_tap_comment")
+            addSwitch("禁用下拉刷新", "禁用下拉手势，并折叠下拉刷新提示区域", { gRefreshOff }, {
+                gRefreshOff = it
+                if (!it) restoreRefreshAccessories() else mainHandler.post { scanAllWindows() }
+            }, "pull_refresh")
+            addSwitch("顶部区域拦截下滑", "拦截屏幕顶部区域向下滑动手势", { gTopZoneOn }, { gTopZoneOn = it }, "top_zone")
+
+            content.addView(sectionTitle(act, "内容与账号", p))
+            addSwitch("拦截广告 / 挂件", "拦截已适配的广告层、金宝箱和悬浮挂件", { gAdOn }, { gAdOn = it }, "ad_block")
+            addSwitch("解锁 VIP", "启用已适配的 VIP 状态 Hook", { gVipOn }, { gVipOn = it }, "vip_unlock")
+            addSwitch("显示 VIP 图标", "控制 VIP 图标相关显示逻辑", { gVipIconOn }, { gVipIconOn = it }, "vip_icon")
+
+            content.addView(sectionTitle(act, "实验性功能", p))
+            addSwitch("OLED 亮度拦截", "实验功能：仅在需要时手动开启", { gOledProtectOn }, { gOledProtectOn = it }, "oled_protect")
+            addSwitch("通知栏快捷菜单", "在通知栏显示模块开关、面板和重启快捷操作。没有效果 记得打开红果的通知权限", { gNotificationMenuOn }, {
+                gNotificationMenuOn = it
+                createNotification(act.applicationContext)
+            }, "notification_menu")
+            addSwitch(
+                "自定义下载数量限制",
+                downloadLimitSummary(),
+                { gDownloadLimitUnlimitOn },
+                {
+                    gDownloadLimitUnlimitOn = it
+                    if (it) Toast.makeText(act, "已开启。为确保下载进程读取新配置，请强停红果后重新打开", Toast.LENGTH_LONG).show()
+                },
+                DOWNLOAD_LIMIT_PREF,
+                onRowAction = { showDownloadLimitEditor(act, p) {  } },
+            )
+
+            val scroll = ScrollView(act).apply {
+                isFillViewport = false
+                isVerticalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+
+            val dialog = Dialog(act)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            val shell = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                background = roundedBg(act, p.page, 28f, p.divider, 1f)
+                clipToPadding = false
+            }
+            shell.addView(scroll, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ))
+
+            val footer = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(act, 16f), dp(act, 10f), dp(act, 16f), dp(act, 16f))
+            }
+            val done = TextView(act).apply {
+                text = "完成"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = roundedBg(act, p.accent, 18f)
+                isClickable = true
+                isFocusable = true
+                minimumHeight = dp(act, 46f)
+                setOnClickListener {
+
+                    shell.animate().cancel()
+                    shell.animate()
+                        .alpha(0f)
+                        .translationY(dp(act, 14f).toFloat())
+                        .scaleX(0.985f)
+                        .scaleY(0.985f)
+                        .setDuration(130L)
+                        .withEndAction { if (dialog.isShowing) dialog.dismiss() }
+                        .start()
+                }
+            }
+            footer.addView(done, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(act, 46f),
+            ))
+            shell.addView(footer, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ))
+
+            installPanelWatermark(shell, act, p.textSecondary)
+
+            shell.alpha = 0f
+            shell.translationY = dp(act, 18f).toFloat()
+            shell.scaleX = 0.975f
+            shell.scaleY = 0.975f
+
+            dialog.setContentView(shell)
+            dialog.setCanceledOnTouchOutside(true)
+            dialog.setOnShowListener {
+                try {
+                    val dm = act.resources.displayMetrics
+                    dialog.window?.apply {
+
+                        setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                        attributes = attributes.apply {
+                            dimAmount = 0.58f
+                            windowAnimations = 0
+                        }
+                        setLayout((dm.widthPixels * 0.90f).toInt(), (dm.heightPixels * 0.86f).toInt())
+                    }
+                    shell.post {
+                        shell.animate().cancel()
+                        shell.animate()
+                            .alpha(1f)
+                            .translationY(0f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(220L)
+                            .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+                            .start()
+                    }
+                } catch (e: Throwable) {
+                    LogUtil.error("面板窗口样式", e)
+                }
+            }
+            dialog.show()
+        } catch (e: Exception) {
+            LogUtil.error("面板", e)
+        }
     }
     private fun openPanel() { mainHandler.post { showPanel(gCurrentActivity) } }
 
-    // ===== 顶部下滑 =====
     private fun handleTopZoneEvent(ev: android.view.MotionEvent?): Boolean {
         if (ev == null) return false
         try {
@@ -912,20 +3356,336 @@ object Hooks {
         return false
     }
 
-    // ===== 设置页按钮 =====
-    private fun injectSettingsButton(act: Activity) {
-        try {
-            val content = act.findViewById<ViewGroup>(android.R.id.content) ?: return
-            if ((0 until content.childCount).any { gKejiyuBtnTag == content.getChildAt(it).tag }) return
-            val btn = Button(act).apply { text = "KEJIYU"; textSize = 16f; isAllCaps = false; tag = gKejiyuBtnTag; setOnClickListener { showPanel(gSettingsActivity ?: gCurrentActivity) } }
-            val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP); lp.topMargin = (60 * act.resources.displayMetrics.density).toInt(); content.addView(btn, lp)
-            LogUtil.info("设置页按钮已绘制")
-        } catch (e: Exception) { LogUtil.error("按钮", e) }
+    private fun findNativeSettingsContainer(root: View?): ViewGroup? {
+        if (root !is ViewGroup) return null
+        var best: ViewGroup? = null
+        var bestScore = Int.MIN_VALUE
+        fun walk(group: ViewGroup, depth: Int) {
+            if (depth > 9) return
+            val name = group.javaClass.name
+            val isRecycler = name.contains("RecyclerView") || name.contains("ListView")
+            val isVerticalLinear = group is LinearLayout && group.orientation == LinearLayout.VERTICAL
+            if (!isRecycler && isVerticalLinear && group.childCount in 2..40) {
+                var textCount = 0
+                var clickableCount = 0
+                for (i in 0 until group.childCount) {
+                    val child = group.getChildAt(i)
+                    if (child is TextView) textCount++
+                    if (child.isClickable) clickableCount++
+                    if (child is ViewGroup) {
+                        for (j in 0 until child.childCount) if (child.getChildAt(j) is TextView) { textCount++; break }
+                    }
+                }
+                val widthOk = group.width <= 0 || group.width >= actWidthPx(group.context) * 0.72f
+                val score = textCount * 3 + clickableCount * 2 + group.childCount - depth * 2 + if (widthOk) 8 else 0
+                if (textCount >= 2 && score > bestScore) {
+                    best = group
+                    bestScore = score
+                }
+            }
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i)
+                if (child is ViewGroup && !child.javaClass.name.contains("RecyclerView")) walk(child, depth + 1)
+            }
+        }
+        walk(root, 0)
+        return best
     }
 
-    // ============================================================
-    // ★ 安装 Hook
-    // ============================================================
+    private fun actWidthPx(ctx: Context): Int = try {
+        ctx.resources.displayMetrics.widthPixels
+    } catch (_: Throwable) { 1080 }
+
+    private fun setFieldValue(instance: Any, fieldName: String, value: Any?): Boolean {
+        var clazz: Class<*>? = instance.javaClass
+        while (clazz != null) {
+            try {
+                clazz.getDeclaredField(fieldName).apply { isAccessible = true }.set(instance, value)
+                return true
+            } catch (_: Throwable) {}
+            clazz = clazz.superclass
+        }
+        return false
+    }
+
+    private fun callNoArgMethod(instance: Any, methodName: String): Any? {
+        var clazz: Class<*>? = instance.javaClass
+        while (clazz != null) {
+            try {
+                val method = clazz.declaredMethods.firstOrNull { it.name == methodName && it.parameterCount == 0 }
+                if (method != null) {
+                    method.isAccessible = true
+                    return method.invoke(instance)
+                }
+            } catch (_: Throwable) {}
+            clazz = clazz.superclass
+        }
+        return null
+    }
+
+    private data class NativeSettingsSpec(
+        val listMethods: Set<String>,
+        val itemClass: String,
+        val clickClass: String,
+        val checkedClass: String?,
+        val style: String,
+    )
+
+    private fun nativeSettingsSpec(): NativeSettingsSpec = when {
+        gPkg == TargetNames.OVERSEA_PACKAGE -> NativeSettingsSpec(
+            listMethods = setOf("e1", "f1"),
+            itemClass = "vr5.e",
+            clickClass = "vr5.b",
+            checkedClass = null,
+            style = "oversea-arrow",
+        )
+        gNames.profileId == "CN-7.3.3.18" -> NativeSettingsSpec(
+            listMethods = setOf("X0", "Y0"),
+            itemClass = "mz5.e",
+            clickClass = "mz5.b",
+            checkedClass = "mz5.c",
+            style = "atomic-arrow",
+        )
+        gNames.profileId == "CN-7.3.2.32" -> NativeSettingsSpec(
+            listMethods = setOf("c1", "d1"),
+            itemClass = "qv5.e",
+            clickClass = "qv5.b",
+            checkedClass = "qv5.c",
+            style = "grouped-atomic-arrow",
+        )
+        else -> NativeSettingsSpec(
+
+            listMethods = setOf("c1", "d1"),
+            itemClass = "pv5.e",
+            clickClass = "pv5.b",
+            checkedClass = "pv5.c",
+            style = "grouped-atomic-arrow",
+        )
+    }
+
+    private fun injectNativeSettingsList(
+        listObj: Any?,
+        classLoader: ClassLoader,
+        spec: NativeSettingsSpec = nativeSettingsSpec(),
+    ): Boolean {
+        val list = listObj as? MutableList<Any?> ?: return false
+        try {
+            for (item in list) {
+                if (item == null) continue
+                val title = findFieldValue(item, "e")?.toString()
+                if (title == "模块设置") return true
+            }
+
+            val itemClass = Class.forName(spec.itemClass, false, classLoader)
+            val ctor = itemClass.declaredConstructors.firstOrNull { it.parameterCount == 0 } ?: return false
+            ctor.isAccessible = true
+            val item = ctor.newInstance()
+            if (!setFieldValue(item, "e", "模块设置")) return false
+            setFieldValue(item, "f", "点击打开模块菜单")
+
+            when (spec.style) {
+                "oversea-arrow" -> {
+
+                    setFieldValue(item, "i", true)
+                    setFieldValue(item, "k", true)
+                }
+                "grouped-atomic-arrow" -> {
+
+                    setFieldValue(item, "i", true)
+                    setFieldValue(item, "a", true)
+                    setFieldValue(item, "b", true)
+                    setFieldValue(item, "c", true)
+                    setFieldValue(item, "o", java.util.concurrent.atomic.AtomicBoolean(gMasterOn))
+                }
+                else -> {
+
+                    setFieldValue(item, "i", true)
+                    setFieldValue(item, "o", java.util.concurrent.atomic.AtomicBoolean(gMasterOn))
+                }
+            }
+
+            list.add(0, item)
+            LogUtil.info("原生设置数据项已注入: ${spec.itemClass} / index=0 / profile=${gNames.profileId}")
+            return true
+        } catch (e: Throwable) {
+            LogUtil.warn("原生设置数据项注入失败(${spec.itemClass}): $e")
+            return false
+        }
+    }
+
+    private fun boundSettingsTitle(clickHost: Any): String? {
+        return try {
+            val holder = findFieldValue(clickHost, "a") ?: return null
+            val data = callNoArgMethod(holder, "getBoundData") ?: return null
+            findFieldValue(data, "e")?.toString()
+        } catch (_: Throwable) { null }
+    }
+
+    private fun nearestSettingsTextColor(root: View?, fallback: Int): Int {
+        if (root == null) return fallback
+        if (root is TextView) {
+            val text = try { root.text?.toString().orEmpty() } catch (_: Throwable) { "" }
+            if (text.isNotBlank() && root.textSize > 12f) return try { root.currentTextColor } catch (_: Throwable) { fallback }
+        }
+        if (root is ViewGroup) for (i in 0 until root.childCount) {
+            val c = nearestSettingsTextColor(root.getChildAt(i), fallback)
+            if (c != fallback) return c
+        }
+        return fallback
+    }
+
+    private fun makeNativeSettingsEntry(act: Activity, parent: ViewGroup): View {
+        val p = panelPalette(act)
+        val textColor = nearestSettingsTextColor(parent, p.text)
+        return LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(act, 18f), 0, dp(act, 16f), 0)
+            minimumHeight = dp(act, 56f)
+            tag = gKejiyuBtnTag
+            isClickable = true
+            isFocusable = true
+            try {
+                val tv = android.util.TypedValue()
+                if (act.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true) && tv.resourceId != 0) {
+                    setBackgroundResource(tv.resourceId)
+                } else {
+                    background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                }
+            } catch (_: Throwable) {
+                background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+            }
+            addView(TextView(act).apply {
+                text = "模块设置"
+                textSize = 15f
+                setTextColor(textColor)
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            addView(TextView(act).apply {
+                text = "›"
+                textSize = 25f
+                setTextColor(p.textSecondary)
+                includeFontPadding = false
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(act, 30f), ViewGroup.LayoutParams.MATCH_PARENT))
+            setOnClickListener { showPanel(gSettingsActivity ?: gCurrentActivity) }
+        }
+    }
+
+    private fun containsKejiyuEntry(root: View?): Boolean {
+        if (root == null) return false
+        if (root.tag == gKejiyuBtnTag) return true
+        if (root is TextView) {
+            val text = try { root.text?.toString()?.trim().orEmpty() } catch (_: Throwable) { "" }
+            if (text == "模块设置" || text == "KEJIYU 模块设置") return true
+        }
+        if (root is ViewGroup) for (i in 0 until root.childCount) if (containsKejiyuEntry(root.getChildAt(i))) return true
+        return false
+    }
+
+    private fun isLikelySettingsActivity(act: Activity?): Boolean {
+        if (act == null) return false
+        val name = try { act.javaClass.name } catch (_: Throwable) { return false }
+        if (name == "com.dragon.read.component.biz.impl.mine.settings.SettingsActivity" ||
+            name == "com.dragon.read.component.biz.impl.mine.settings.KmpSettingsActivity") return true
+        val lower = name.lowercase()
+        return lower.startsWith("com.dragon.read") && lower.contains(".mine.") &&
+            (lower.endsWith("settingsactivity") || lower.endsWith("settingactivity"))
+    }
+
+    private fun installSettingsFooterFallback(act: Activity, content: ViewGroup): Boolean {
+        if (containsKejiyuEntry(content)) return true
+        if (content.childCount <= 0) return false
+        try {
+
+            val oldChildren = ArrayList<Pair<View, ViewGroup.LayoutParams?>>(content.childCount)
+            for (i in 0 until content.childCount) {
+                val child = content.getChildAt(i)
+                oldChildren.add(child to child.layoutParams)
+            }
+            content.removeAllViews()
+
+            val wrapper = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL
+                tag = gKejiyuSettingsWrapperTag
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            val stage = FrameLayout(act)
+            wrapper.addView(stage, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+            ))
+            for ((child, oldLp) in oldChildren) {
+                val lp = if (oldLp is FrameLayout.LayoutParams) oldLp else FrameLayout.LayoutParams(
+                    oldLp?.width ?: ViewGroup.LayoutParams.MATCH_PARENT,
+                    oldLp?.height ?: ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                stage.addView(child, lp)
+            }
+
+            val entry = makeNativeSettingsEntry(act, wrapper)
+
+            val divider = View(act).apply {
+                background = android.graphics.drawable.ColorDrawable(panelPalette(act).divider)
+            }
+            wrapper.addView(divider, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(act, 1f)
+            ))
+            wrapper.addView(entry, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(act, 56f)
+            ))
+            content.addView(wrapper, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+            LogUtil.info("设置页入口已使用固定布局 footer 兜底: children=${oldChildren.size}")
+            return true
+        } catch (e: Throwable) {
+            LogUtil.error("设置页 footer 兜底", e)
+            return false
+        }
+    }
+
+    private fun injectSettingsButton(act: Activity, allowFallback: Boolean = true) {
+        try {
+            if (act.isFinishing || !isLikelySettingsActivity(act)) return
+            val content = act.findViewById<ViewGroup>(android.R.id.content) ?: return
+            if (containsKejiyuEntry(content)) return
+
+            val nativeContainer = findNativeSettingsContainer(content)
+            if (nativeContainer != null) {
+                val entry = makeNativeSettingsEntry(act, nativeContainer)
+                nativeContainer.addView(entry, ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(act, 56f),
+                ))
+                LogUtil.info("设置页入口已注入原生容器: ${nativeContainer.javaClass.name}")
+                return
+            }
+
+            if (allowFallback) installSettingsFooterFallback(act, content)
+        } catch (e: Exception) { LogUtil.error("设置页入口", e) }
+    }
+
+    private fun scheduleSettingsEntryInjection(act: Activity?) {
+        if (!isLikelySettingsActivity(act)) return
+        val a = act ?: return
+        gSettingsActivity = a
+
+        val attempts = arrayOf(
+            150L to false,
+            550L to false,
+            1400L to false,
+            2800L to true,
+            4600L to true,
+        )
+        for ((delay, allowFallback) in attempts) {
+            mainHandler.postDelayed({
+                if (!a.isFinishing && isLikelySettingsActivity(a)) injectSettingsButton(a, allowFallback)
+            }, delay)
+        }
+    }
+
     private fun pollUpdatePrompt(a: Activity, attempt: Int) {
         if (a.isFinishing || attempt > 10) return
         mainHandler.postDelayed({
@@ -939,17 +3699,65 @@ object Hooks {
         }, 1000)
     }
 
-    /** 有新版时，用当前可见的 Activity 弹更新框（作用域启动自动检测用） */
     fun showUpdateDialogIfAvailable() {
         val a = gCurrentActivity ?: return
         if (a.isFinishing) return
         mainHandler.post { UpdateChecker.showUpdateDialogIfNeeded(a) }
     }
 
-    fun installBusinessHooks(module: MainHook, classLoader: ClassLoader) {
-        LogUtil.info("── installBusinessHooks ──"); seedIds.forEach { gTargetIdSet.add(it) }
+    private fun detectTargetPackageVersion(pkg: String): Pair<String?, Long> {
+        try {
+            val app = try {
+                Class.forName("android.app.ActivityThread").getDeclaredMethod("currentApplication").invoke(null) as? Context
+            } catch (_: Throwable) {
+                try { Class.forName("android.app.AppGlobals").getDeclaredMethod("getInitialApplication").invoke(null) as? Context } catch (_: Throwable) { null }
+            }
+            if (app != null) {
+                @Suppress("DEPRECATION")
+                val pi = app.packageManager.getPackageInfo(pkg, 0)
+                @Suppress("DEPRECATION")
+            val code = if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
+                return pi.versionName to code
+            }
+        } catch (e: Throwable) {
+            LogUtil.warn("读取目标版本失败，改用类指纹: $e")
+        }
+        return null to -1L
+    }
 
-        // ===== 自动更新检测（无开关）：每次启动作用域自动获取一次 ===== 
+    fun installBusinessHooks(module: MainHook, classLoader: ClassLoader, pkg: String) {
+        LogUtil.info("── installBusinessHooks ── pkg=$pkg")
+        gTargetIdSet.clear()
+        gProgressIdSet.clear()
+        gPauseRestoreIdSet.clear()
+        gPkg = pkg
+
+        try {
+            val processCtx = try {
+                Class.forName("android.app.ActivityThread").getDeclaredMethod("currentApplication").invoke(null) as? Context
+            } catch (_: Throwable) {
+                try { Class.forName("android.app.AppGlobals").getDeclaredMethod("getInitialApplication").invoke(null) as? Context } catch (_: Throwable) { null }
+            }
+            if (processCtx != null) {
+                appCtx = processCtx.applicationContext
+                initPrefs(processCtx.applicationContext)
+            }
+        } catch (e: Throwable) {
+            LogUtil.warn("下载进程设置初始化失败，将使用磁盘直读兜底: ${e.javaClass.simpleName}: ${e.message}")
+        }
+        val detected = detectTargetPackageVersion(pkg)
+        gTargetVersionName = detected.first ?: "未知"
+        gTargetVersionCode = detected.second
+
+        gNames = TargetNames.namesFor(pkg, detected.first, classLoader)
+
+        if (gNames.useLegacySeedIds) seedIds.forEach { gTargetIdSet.add(it) }
+        gNames.staticHideIds.forEach { gTargetIdSet.add(it) }
+        gNames.staticProgressIds.forEach { gProgressIdSet.add(it) }
+        gNames.pauseRestoreIds.forEach { gPauseRestoreIdSet.add(it) }
+        LogUtil.info("目标兼容配置=${gNames.profileId} | detectedVersion=${gTargetVersionName}(${gTargetVersionCode}) | shortHolder=${gNames.shortHolder} | holderBaseS1=${gNames.holderBaseS1} | toolbarBase=${gNames.toolbarBase} | kmpVipModel=${gNames.kmpVipModel}")
+        LogUtil.info("资源兼容：hideIds=${gTargetIdSet.joinToString { "0x%08X".format(it) }} | progressIds=${gProgressIdSet.joinToString { "0x%08X".format(it) }} | pauseIds=${gPauseRestoreIdSet.joinToString { "0x%08X".format(it) }}")
+
         try {
             if (!UpdateChecker.checking && UpdateChecker.latestVersion == null) {
                 LogUtil.info("作用域启动：自动触发更新检测")
@@ -970,10 +3778,371 @@ object Hooks {
             clazz.declaredConstructors.forEachIndexed { i, c -> try { module.hook(c).setId("${hookId}_$i").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> block(chain) }) } catch (_: Exception) {} }
         }
 
-        // 1. 不再 Hook Activity.attach：ActivityThread 会在 attach 返回后才应用
-        // NoActionBar 主题，此时访问 decorView 会提前安装系统标题栏。
+        if (pkg == TargetNames.CN_PACKAGE || pkg == TargetNames.OVERSEA_PACKAGE) {
+            try {
+                val mainClazz = Class.forName("com.dragon.read.pages.main.MainFragmentActivity", false, classLoader)
+                val nativeMethods = when {
+                    pkg == TargetNames.OVERSEA_PACKAGE -> {
 
-        // 2. App 自己处理完焦点变化后再恢复所需的系统栏状态。
+                        listOf("onCreate", "B2", "N1", "f1", "j2")
+                    }
+                    gNames.profileId == "CN-7.3.3.18" -> {
+
+                        listOf("onCreate", "X0", "z2", "M1", "h2")
+                    }
+                    gNames.profileId == "CN-7.3.2.32" -> {
+
+                        listOf("onCreate", "d1", "y2", "L1", "g2")
+                    }
+                    else -> {
+
+                        listOf("onCreate", "d1", "z2", "L1", "g2")
+                    }
+                }
+                for ((index, methodName) in nativeMethods.withIndex()) {
+                    ham(mainClazz, methodName, "nativeBottomFrame_${pkg.hashCode()}_$index") { chain ->
+                        val act = chain.thisObject as? Activity
+                        val result = chain.proceed()
+                        if (act != null && gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                            mainHandler.post { enforceNativeMainBottomHidden(act) }
+                        }
+                        result
+                    }
+                }
+                LogUtil.info("  ✓ native MainFragmentActivity BottomTabFrameLayout | pkg=$pkg")
+            } catch (e: Throwable) {
+                LogUtil.warn("  native BottomTabFrameLayout Hook 未命中 | pkg=$pkg: $e")
+            }
+
+            try {
+                val bottomFrameClazz = Class.forName("com.dragon.read.widget.BottomTabFrameLayout", false, classLoader)
+                ham(bottomFrameClazz, "setBottomTabBackground", "nativeBottomBackground_${pkg.hashCode()}") { chain ->
+                    val frame = chain.thisObject as? View
+                    val result = chain.proceed()
+                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                        updateNativeNavBarRestoreColor(gCurrentActivity)
+                        collapseNativeMainBottomFrame(frame)
+                        applyBottomEdgeToEdge(gCurrentActivity, gNavBarOff)
+                    }
+                    result
+                }
+                LogUtil.info("  ✓ BottomTabFrameLayout.setBottomTabBackground/windowNavColor | pkg=$pkg")
+            } catch (e: Throwable) {
+                LogUtil.warn("  BottomTabFrameLayout 背景 Hook 未命中 | pkg=$pkg: $e")
+            }
+
+            try {
+                val maskClassName: String
+                val maskMethodName: String
+                val maskIdName: String
+                when {
+                    pkg == TargetNames.OVERSEA_PACKAGE -> {
+                        maskClassName = "vq3.a"
+                        maskMethodName = "d"
+                        maskIdName = "bottom_tab_mask"
+                    }
+                    gNames.profileId == "CN-7.3.3.18" -> {
+                        maskClassName = "bu3.a"
+                        maskMethodName = "e"
+                        maskIdName = "ar9"
+                    }
+                    else -> {
+
+                        maskClassName = "it3.a"
+                        maskMethodName = "d"
+                        maskIdName = "ar8"
+                    }
+                }
+                val maskController = Class.forName(maskClassName, false, classLoader)
+                val bind = maskController.getDeclaredMethod(maskMethodName, View::class.java)
+                module.hook(bind).setId("videoFeedTabBottomMask_${pkg.hashCode()}")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        val root = try { chain.getArg(0) as? View } catch (_: Throwable) { null }
+                        val result = chain.proceed()
+                        if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                            try {
+
+                                val controllerMask = findFieldValue(chain.thisObject, "h") as? View
+                                val byId = if (root != null) {
+                                    val id = root.resources.getIdentifier(maskIdName, "id", gPkg)
+                                    if (id != 0) root.findViewById<View>(id) else null
+                                } else null
+                                collapseNativeVideoFeedBottomMask(controllerMask ?: byId)
+                                enforceNativeMainBottomHidden(gCurrentActivity)
+                            } catch (_: Throwable) {}
+                        }
+                        result
+                    })
+                LogUtil.info("  ✓ VideoFeedTabBottomMask $maskClassName.$maskMethodName | id=$maskIdName")
+            } catch (e: Throwable) {
+                LogUtil.warn("  VideoFeedTabBottomMask Hook 未命中 | pkg=$pkg: $e")
+            }
+
+            try {
+                val feedClazz = Class.forName(
+                    "com.dragon.read.component.shortvideo.impl.feedtab.VideoFeedTabFragmentImpl",
+                    false,
+                    classLoader,
+                )
+                val layoutMethod = when {
+                    pkg == TargetNames.OVERSEA_PACKAGE -> "Mf"
+                    gNames.profileId == "CN-7.3.3.18" -> "Lg"
+
+                    else -> "Eg"
+                }
+                ham(feedClazz, layoutMethod, "feedViewportBottomMargin_${pkg.hashCode()}") { chain ->
+                    val root = try { chain.getArg(0) as? View } catch (_: Throwable) { null }
+                    val exactOldFeed = pkg == TargetNames.CN_PACKAGE &&
+                        (gNames.profileId == "CN-7.3.1.32" || gNames.profileId == "CN-7.3.2.32")
+                    val oldMarker = gInsideFeedBottomMarginWrite.get() == true
+                    if (exactOldFeed) gInsideFeedBottomMarginWrite.set(true)
+                    val result = try { chain.proceed() } finally {
+                        if (exactOldFeed) gInsideFeedBottomMarginWrite.set(oldMarker)
+                    }
+                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+
+                        if (gNames.profileId == "CN-7.3.2.32" || gNames.profileId == "CN-7.3.1.32") {
+                            for (delay in longArrayOf(0L, 32L, 120L)) {
+                                mainHandler.postDelayed({
+                                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                                        reclaimFeedViewportBottomMargin(root)
+                                        enforceKnownFeedViewportBottomMargin()
+                                    }
+                                }, delay)
+                            }
+                        } else {
+                            mainHandler.post { reclaimFeedViewportBottomMargin(root) }
+                        }
+                    }
+                    result
+                }
+
+                ham(feedClazz, "onConfigurationChanged", "feedViewportConfig_${pkg.hashCode()}") { chain ->
+                    val result = chain.proceed()
+                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                        val root = try { gCurrentActivity?.window?.decorView } catch (_: Throwable) { null }
+                        for (delay in longArrayOf(0L, 24L, 90L, 180L)) {
+                            mainHandler.postDelayed({
+                                if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                                    reclaimFeedViewportBottomMargin(root)
+                                    enforceKnownFeedViewportBottomMargin()
+                                }
+                            }, delay)
+                        }
+                    }
+                    result
+                }
+                LogUtil.info("  ✓ VideoFeedTabFragmentImpl.$layoutMethod(View) bottomMargin=0 | pkg=$pkg")
+            } catch (e: Throwable) {
+                LogUtil.warn("  VideoFeedTabFragmentImpl bottomMargin Hook 未命中 | pkg=$pkg: $e")
+            }
+
+            if (pkg == TargetNames.CN_PACKAGE &&
+                (gNames.profileId == "CN-7.3.1.32" || gNames.profileId == "CN-7.3.2.32")) {
+                try {
+                    val uiUtils = Class.forName("com.bytedance.common.utility.UIUtils", false, classLoader)
+                    val updateMargin = uiUtils.getDeclaredMethod(
+                        "updateLayoutMargin",
+                        View::class.java,
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                    )
+                    module.hook(updateMargin)
+                        .setId("oldFeedBottomMarginWrite_${pkg.hashCode()}")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(Hooker { chain ->
+                            var replacementArgs: Array<Any?>? = null
+                            if (gInsideFeedBottomMarginWrite.get() == true &&
+                                gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
+                                val view = try { chain.getArg(0) as? View } catch (_: Throwable) { null }
+                                val bottom = try { chain.getArg(4) as? Int } catch (_: Throwable) { null }
+                                if (view != null && bottom != null && bottom > 0) {
+                                    replacementArgs = (chain.args as Array<Any?>).copyOf().also { it[4] = 0 }
+                                    synchronized(gKnownFeedViewportViews) { gKnownFeedViewportViews[view] = true }
+                                    synchronized(gFeedViewportNativeBottomMargins) { gFeedViewportNativeBottomMargins[view] = bottom }
+                                    LogUtil.info("旧版首页 bottomMargin 写入已拦截 | profile=${gNames.profileId} | id=${viewEntryName(view)} | ${bottom}px -> 0")
+                                    LogUtil.incr("oldFeedBottomMarginWriteBlock")
+                                }
+                            }
+                            if (replacementArgs != null) chain.proceed(replacementArgs) else chain.proceed()
+                        })
+                    LogUtil.info("  ✓ old CN UIUtils.updateLayoutMargin 精确拦截 | profile=${gNames.profileId}")
+                } catch (e: Throwable) {
+                    LogUtil.warn("  old CN updateLayoutMargin 精确拦截未命中: $e")
+                }
+            }
+        }
+
+        try {
+            val agencyClass = Class.forName(gNames.rightViewAgency, false, classLoader)
+            hac(agencyClass, "rightViewAgencyCtor") { chain ->
+                val result = chain.proceed()
+                registerRightViewAgency(chain.thisObject)
+                result
+            }
+
+            ham(agencyClass, gNames.rightViewAgencyEventMethod, "rightViewAgencyEvent") { chain ->
+                registerRightViewAgency(chain.thisObject)
+                chain.proceed()
+            }
+            LogUtil.info("  ✓ 评论区 Agency ${gNames.rightViewAgency}.${gNames.rightViewAgencyEventMethod}")
+        } catch (e: Throwable) {
+            LogUtil.warn("  评论区 Agency Hook 失败: $e")
+        }
+
+        var doubleTapHookCount = 0
+        for ((handlerIndex, handlerName) in gNames.doubleTapHandlers.withIndex()) {
+            try {
+                val doubleTapClass = Class.forName(handlerName, false, classLoader)
+                val methods = doubleTapClass.declaredMethods.filter {
+                    it.name == "onDoubleTap" && it.parameterCount == 1 &&
+                        it.parameterTypes[0] == android.view.MotionEvent::class.java
+                }
+                for ((methodIndex, method) in methods.withIndex()) {
+                    module.hook(method).setId("doubleTapComment_${handlerIndex}_${methodIndex}")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(Hooker { chain ->
+                            if (!gMasterOn || !gDoubleTapCommentOn) return@Hooker chain.proceed()
+                            val now = android.os.SystemClock.uptimeMillis()
+
+                            gSuppressDoubleTapLikeUntil = maxOf(gSuppressDoubleTapLikeUntil, now + 1500L)
+
+                            if (now - gLastDoubleTapCommentAt > 350L) {
+                                gLastDoubleTapCommentAt = now
+                                val opened = openCurrentCommentFromDoubleTap()
+                                LogUtil.incr(if (opened) "doubleTapOpenCommentOK" else "doubleTapOpenCommentNoAgency")
+                            } else {
+                                LogUtil.incr("doubleTapDuplicateConsumed")
+                            }
+
+                            LogUtil.incr("doubleTapLikeBlocked")
+                            true
+                        })
+                    doubleTapHookCount++
+                    LogUtil.info("  ✓ 双击评论 $handlerName.onDoubleTap")
+                }
+            } catch (e: Throwable) {
+                LogUtil.warn("  双击处理器 $handlerName Hook 失败: $e")
+            }
+        }
+        if (doubleTapHookCount == 0) LogUtil.warn("  双击评论：当前版本没有安装到任何 onDoubleTap Hook")
+
+        if (gNames.doubleTapLikeView.isNotBlank()) {
+            try {
+                val likeViewClass = Class.forName(gNames.doubleTapLikeView, false, classLoader)
+                likeViewClass.declaredMethods.filter {
+                    it.name == "a" && it.parameterCount == 1 &&
+                        it.parameterTypes[0].name == "kotlin.Pair" && it.returnType == Void.TYPE
+                }.forEachIndexed { index, method ->
+                    module.hook(method).setId("doubleTapDiggBlock_$index")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(Hooker { chain ->
+                            val now = android.os.SystemClock.uptimeMillis()
+                            if (gMasterOn && gDoubleTapCommentOn && now <= gSuppressDoubleTapLikeUntil) {
+                                LogUtil.incr("doubleTapDiggActionBlocked")
+                                null
+                            } else chain.proceed()
+                        })
+                }
+                LogUtil.info("  ✓ 双击点赞动作兜底 ${gNames.doubleTapLikeView}.a(Pair)")
+            } catch (e: Throwable) {
+                LogUtil.warn("  双击点赞动作兜底安装失败: $e")
+            }
+        }
+
+        if (gNames.doubleTapHolderLikeMethod.isNotBlank()) {
+            try {
+                val holderClass = Class.forName(gNames.shortHolder, false, classLoader)
+                holderClass.declaredMethods.filter {
+                    it.name == gNames.doubleTapHolderLikeMethod &&
+                        it.parameterCount == 0 && it.returnType == Void.TYPE
+                }.forEachIndexed { index, method ->
+                    module.hook(method).setId("doubleTapHolderLikeBlock_$index")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(Hooker { chain ->
+                            val now = android.os.SystemClock.uptimeMillis()
+                            if (gMasterOn && gDoubleTapCommentOn && now <= gSuppressDoubleTapLikeUntil) {
+                                LogUtil.incr("doubleTapHolderLikeBlocked")
+                                null
+                            } else chain.proceed()
+                        })
+                }
+                LogUtil.info("  ✓ 双击最终点赞兜底 ${gNames.shortHolder}.${gNames.doubleTapHolderLikeMethod}()")
+            } catch (e: Throwable) {
+                LogUtil.warn("  双击最终点赞兜底安装失败: $e")
+            }
+        }
+
+        if (gNames.resolutionController.isNotBlank()) {
+            try {
+                val controllerClass = Class.forName(gNames.resolutionController, false, classLoader)
+                val engineField = controllerClass.getDeclaredField(gNames.resolutionEngineField).apply { isAccessible = true }
+                for ((methodIndex, methodName) in gNames.resolutionModelMethods.withIndex()) {
+                    ham(controllerClass, methodName, "maxQualityModel_${methodIndex}") { chain ->
+                        val controller = chain.thisObject
+                        val model = try { chain.getArg(0) } catch (_: Throwable) { null }
+                        val highest = findHighestResolution(model)
+
+                        if (gNames.resolutionApplyMethod.isBlank()) {
+
+                            try {
+                                val engineBefore = if (controller != null) engineField.get(controller) else null
+                                if (engineBefore != null && highest != null) gEngineMaxResolution[engineBefore] = highest
+                            } catch (_: Throwable) {}
+                        } else if (controller != null && highest != null) {
+                            gControllerMaxResolution[controller] = highest
+                        }
+
+                        val result = chain.proceed()
+                        try {
+                            if (highest != null) {
+                                LogUtil.info("最高画质：检测到 $highest rank=${resolutionRank(highest)}")
+                                if (gNames.resolutionApplyMethod.isNotBlank()) {
+
+                                    if (gMasterOn && gMaxQualityOn) applyHighestViaController(controller, highest)
+                                } else {
+                                    val engine = if (controller != null) engineField.get(controller) else null
+                                    rememberAndApplyHighestResolution(engine, model)
+                                }
+                            }
+                        } catch (e: Throwable) {
+                            LogUtil.warn("最高画质：应用失败: $e")
+                        }
+                        result
+                    }
+                }
+
+                if (gNames.resolutionApplyMethod.isBlank()) {
+                    val engineClass = Class.forName("com.ss.ttvideoengine.TTVideoEngine", false, classLoader)
+                    ham(engineClass, "configResolution", "maxQualityConfig") { chain ->
+                        if (!gMasterOn || !gMaxQualityOn) return@ham chain.proceed()
+                        val engine = chain.thisObject
+                        val highest = try { gEngineMaxResolution[engine] } catch (_: Throwable) { null }
+                        if (highest == null) return@ham chain.proceed()
+                        try {
+                            val requested = chain.getArg(0)
+                            if (requested !== highest) {
+                                val args = (chain.args as Array<Any?>).copyOf()
+                                args[0] = highest
+                                LogUtil.info("最高画质：拦截 $requested -> $highest")
+                                LogUtil.incr("maxQualityOverride")
+                                return@ham chain.proceed(args)
+                            }
+                        } catch (_: Throwable) {}
+                        chain.proceed()
+                    }
+                    LogUtil.info("  ✓ 默认最高画质 ${gNames.resolutionController} + TTVideoEngine")
+                } else {
+                    LogUtil.info("  ✓ 默认最高画质 ${gNames.resolutionController}.${gNames.resolutionApplyMethod}（原生切画质链）")
+                }
+            } catch (e: Throwable) {
+                LogUtil.warn("  默认最高画质 Hook 失败: $e")
+            }
+        }
+
         try {
             val c = Class.forName("android.app.Activity", false, classLoader)
             module.hook(c.getDeclaredMethod("onWindowFocusChanged", Boolean::class.java))
@@ -994,7 +4163,6 @@ object Hooks {
             LogUtil.info("  ✓ winFocus")
         } catch (e: Exception) { LogUtil.error("wf", e) }
 
-        // 自由小窗、分屏与画中画会在同一个 Activity 内改变窗口边界，不能只靠 onResume。
         try {
             val c = Class.forName("android.app.Activity", false, classLoader)
             ham(c, "onMultiWindowModeChanged", "multiWindow") { chain ->
@@ -1015,9 +4183,6 @@ object Hooks {
             LogUtil.info("  ✓ window mode callbacks")
         } catch (e: Throwable) { LogUtil.warn("  window mode callbacks missing: $e") }
 
-        // 联播页会在 Activity.onCreate 末尾重新写 systemUiVisibility=0x500，
-        // ShortSeriesSingleFragment.za() 还会在上下控制层变化时直接增删
-        // FLAG_FULLSCREEN。它们都晚于通用 Activity Hook，必须在具体调用返回后校正。
         val seriesActivityClasses = listOf(
             "com.dragon.read.component.shortvideo.impl.ShortSeriesActivity",
             "com.dragon.read.component.shortvideo.impl.seriesdetail.ShortSeriesDetailActivity",
@@ -1036,7 +4201,15 @@ object Hooks {
                 )) {
                     ham(c, methodName, "seriesWindow_${classIndex}_$methodName") { chain ->
                         val result = chain.proceed()
-                        reapplySeriesPageState(chain.thisObject, "$className#$methodName")
+
+                        val shouldRefreshLayout = methodName == "onConfigurationChanged" ||
+                            methodName == "onMultiWindowModeChanged" ||
+                            methodName == "onPictureInPictureModeChanged"
+                        reapplySeriesPageState(
+                            chain.thisObject,
+                            "$className#$methodName",
+                            refreshLayout = shouldRefreshLayout,
+                        )
                         result
                     }
                 }
@@ -1059,7 +4232,7 @@ object Hooks {
                 "onCreateContent",
                 "onResume",
                 "onConfigurationChanged",
-                "za",
+                gNames.seriesFragmentRefreshMethod,
             )) {
                 ham(c, methodName, "seriesFragment_$methodName") { chain ->
                     val result = chain.proceed()
@@ -1067,7 +4240,7 @@ object Hooks {
                     reapplySeriesPageState(
                         chain.thisObject,
                         "$className#$methodName",
-                        refreshLayout = methodName != "za",
+                        refreshLayout = methodName != gNames.seriesFragmentRefreshMethod,
                     )
                     result
                 }
@@ -1076,7 +4249,7 @@ object Hooks {
         } catch (e: Throwable) {
             LogUtil.warn("  series fragment window tracker missing: $e")
         }
-        // 3. StatusBarUtil
+
         try {
             val c = Class.forName("com.dragon.read.base.ui.util.StatusBarUtil", false, classLoader)
             ham(c, "clearFullScreenFlag", "sbC") { chain ->
@@ -1099,15 +4272,12 @@ object Hooks {
                 } catch (_: Exception) { chain.proceed() }
             }
 
-            // 目标 App 用 ignoringVisibility(statusBars | displayCutout) 计算顶部 margin。
-            // 状态栏隐藏后该值仍非 0，因此在模块启用时直接返回 0。
             ham(c, "getStatusHeight", "sbHeight") { chain ->
                 if (shouldHideStatusBar()) 0 else chain.proceed()
             }
             LogUtil.info("  ✓ StatusBarUtil")
         } catch (e: Exception) { LogUtil.warn("  StatusBarUtil 未找到") }
 
-        // 首页实际使用的是 ByteDance 这套工具，而不是上面的 StatusBarUtil。
         try {
             val c = Class.forName("com.bytedance.ies.uikit.statusbar.StatusBarUtils", false, classLoader)
             module.hook(c.getDeclaredMethod("getStatusBarHeight", Context::class.java))
@@ -1119,9 +4289,114 @@ object Hooks {
             LogUtil.info("  ✓ UIKit StatusBarUtils")
         } catch (e: Exception) { LogUtil.warn("  UIKit StatusBarUtils 未找到: $e") }
 
-        // 4. VideoShop 播放状态检测。
-        // 实际链路：工具栏点击 -> command 207/208 -> VideoContext play/pause ->
-        // TTVideoEngine playbackState(1=播放, 2=暂停) -> VideoController/ns7.b.onPlaybackStateChanged。
+        try {
+            val isNewCn = gNames.profileId == "CN-7.3.3.18"
+            val isOversea = gNames.profileId == "OVERSEA-7.3.1.32"
+
+            val percentPlayerClassName = when {
+                isNewCn -> "nx4.w"
+                isOversea -> "ys4.x"
+                else -> "ov4.x"
+            }
+            val controllerClassName = when {
+                isNewCn -> "com.dragon.read.component.shortvideo.impl.v2.view.adapter.a"
+                isOversea -> "lt4.v"
+                else -> "bw4.v"
+            }
+            val controllerSetMethod = when {
+                isNewCn -> "v2"
+                isOversea -> "u2"
+                else -> "r2"
+            }
+            val controllerCacheMethod = if (isNewCn) "w" else "getCacheVideoSpeed"
+
+            val playerClass = Class.forName(percentPlayerClassName, false, classLoader)
+            hac(playerClass, "defaultSpeedPlayerCtor") { chain ->
+                val result = chain.proceed()
+                try {
+                    gKnownPercentSpeedPlayers[chain.thisObject] = true
+                    if (defaultSpeedEnabledNow()) {
+                        val player = chain.thisObject
+                        mainHandler.postDelayed({ applySpeedToPercentPlayer(player, "player-ctor") }, 120L)
+                    }
+                } catch (_: Throwable) {}
+                result
+            }
+            val setPlaySpeed = playerClass.getDeclaredMethod("setPlaySpeed", Integer.TYPE)
+            module.hook(setPlaySpeed).setId("defaultSpeedPercentPlayer")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(Hooker { chain ->
+                    try { gKnownPercentSpeedPlayers[chain.thisObject] = true } catch (_: Throwable) {}
+                    if (!defaultSpeedEnabledNow()) return@Hooker chain.proceed()
+                    val wanted = defaultSpeedPercent()
+                    val requested = try { chain.getArg(0) as? Int } catch (_: Throwable) { null }
+                    if (requested == wanted) return@Hooker chain.proceed()
+                    val args = (chain.args as Array<Any?>).copyOf()
+                    args[0] = wanted
+                    LogUtil.incr("defaultSpeedPercentForce")
+                    chain.proceed(args)
+                })
+
+            val controllerClass = Class.forName(controllerClassName, false, classLoader)
+            val controllerSetter = controllerClass.getDeclaredMethod(
+                controllerSetMethod,
+                Boolean::class.javaPrimitiveType,
+                java.lang.Float.TYPE,
+                Boolean::class.javaPrimitiveType,
+            )
+            module.hook(controllerSetter).setId("defaultSpeedControllerSet")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(Hooker { chain ->
+                    if (!defaultSpeedEnabledNow()) return@Hooker chain.proceed()
+                    val args = (chain.args as Array<Any?>).copyOf()
+                    args[1] = gDefaultSpeed
+                    LogUtil.incr("defaultSpeedControllerForce")
+                    chain.proceed(args)
+                })
+            val cacheGetter = controllerClass.getDeclaredMethod(controllerCacheMethod, String::class.java)
+            module.hook(cacheGetter).setId("defaultSpeedCacheGetter")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(Hooker { chain ->
+                    if (defaultSpeedEnabledNow()) gDefaultSpeed else chain.proceed()
+                })
+            val currentGetter = controllerClass.getDeclaredMethod("getCurrentPlaySpeed")
+            module.hook(currentGetter).setId("defaultSpeedCurrentGetter")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(Hooker { chain ->
+                    if (defaultSpeedEnabledNow()) defaultSpeedPercent() else chain.proceed()
+                })
+
+            val autoplayClass = Class.forName("com.dragon.read.component.shortvideo.impl.autoplay.o", false, classLoader)
+            hac(autoplayClass, "defaultSpeedAutoplayCtor") { chain ->
+                val result = chain.proceed()
+                try {
+                    gKnownFloatSpeedPlayers[chain.thisObject] = true
+                    if (defaultSpeedEnabledNow()) {
+                        val player = chain.thisObject
+                        mainHandler.postDelayed({ applySpeedToFloatPlayer(player, "autoplay-ctor") }, 120L)
+                    }
+                } catch (_: Throwable) {}
+                result
+            }
+            val autoSetSpeed = autoplayClass.getDeclaredMethod("setSpeed", java.lang.Float.TYPE)
+            module.hook(autoSetSpeed).setId("defaultSpeedFloatPlayer")
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(Hooker { chain ->
+                    try { gKnownFloatSpeedPlayers[chain.thisObject] = true } catch (_: Throwable) {}
+                    if (!defaultSpeedEnabledNow()) return@Hooker chain.proceed()
+                    val requested = try { chain.getArg(0) as? Float } catch (_: Throwable) { null }
+                    if (requested != null && kotlin.math.abs(requested - gDefaultSpeed) < 0.001f) return@Hooker chain.proceed()
+                    val args = (chain.args as Array<Any?>).copyOf()
+                    args[0] = gDefaultSpeed
+                    LogUtil.incr("defaultSpeedFloatForce")
+                    chain.proceed(args)
+                })
+
+            LogUtil.info("  ✓ 默认倍速 | profile=${gNames.profileId} | player=$percentPlayerClassName.setPlaySpeed | controller=$controllerClassName.$controllerSetMethod/$controllerCacheMethod | autoplay=setSpeed")
+        } catch (e: Throwable) {
+            LogUtil.warn("  默认倍速 Hook 失败 | profile=${gNames.profileId}: $e")
+        }
+
         fun hookPlaybackState(className: String, hookId: String) {
             try {
                 val c = Class.forName(className, false, classLoader)
@@ -1130,7 +4405,10 @@ object Hooks {
                     try {
                         val state = chain.args.lastOrNull { it is Int } as? Int
                         when (state) {
-                            1 -> setVideoPaused(false, "$className#state=1")
+                            1 -> {
+                                setVideoPaused(false, "$className#state=1")
+                                scheduleDefaultSpeedApply("$className#state=1")
+                            }
                             2 -> setVideoPaused(true, "$className#state=2")
                             0, 3 -> if (gVideoPaused) refreshVideoPauseState("$className#state=$state", false)
                         }
@@ -1140,20 +4418,16 @@ object Hooks {
                 LogUtil.info("  ✓ playback detector: $className")
             } catch (e: Throwable) { LogUtil.warn("  playback detector missing: $className: $e") }
         }
-        // 当前版本同时包含新旧两套 VideoShop controller，均需覆盖。
-        hookPlaybackState("com.ss.android.videoshop.controller.VideoController", "vcState")
-        hookPlaybackState("ns7.b", "nsState")
 
-        // 首页“推荐”短剧不走上面的 VideoShop Controller，而是走 dw4 Holder 回调：
-        // S1(player, 1)=播放，S1(player, 2)=暂停。V2 没接这条链路，所以开关看似存在却无效。
-        // APK 中全部具体 Holder 的 S1 都先调用 dw4.i0.S1；只 Hook 这一层可避免一次
-        // 状态变化被父类、子类重复处理多次。
-        val shortVideoHolderClasses = listOf("dw4.i0")
+        hookPlaybackState("com.ss.android.videoshop.controller.VideoController", "vcState")
+        hookPlaybackState(gNames.playbackState, "nsState")
+
+        val shortVideoHolderClasses = listOf(gNames.holderBaseS1)
         var shortPlaybackHookCount = 0
         shortVideoHolderClasses.forEachIndexed { classIndex, className ->
             try {
                 val c = Class.forName(className, false, classLoader)
-                ham(c, "S1", "shortState_${classIndex}") { chain ->
+                ham(c, gNames.shortStateMethod, "shortState_${classIndex}") { chain ->
                     val result = chain.proceed()
                     try {
                         val holder = chain.thisObject
@@ -1162,7 +4436,8 @@ object Hooks {
                         if (state == 1 || state == 2) {
                             mainHandler.post {
                                 if (isShortVideoHolderVisible(holder)) {
-                                    setVideoPaused(state == 2, "$className#S1=$state")
+                                    setVideoPaused(state == 2, "$className#${gNames.shortStateMethod}=$state")
+                                    if (state == 1) scheduleDefaultSpeedApply("$className#${gNames.shortStateMethod}=1")
                                 }
                             }
                         }
@@ -1175,7 +4450,7 @@ object Hooks {
             } catch (_: Throwable) {}
         }
         try {
-            val c = Class.forName("dw4.t", false, classLoader)
+            val c = Class.forName(gNames.shortHolder, false, classLoader)
             hac(c, "shortHolderCtor") { chain ->
                 val result = chain.proceed()
                 registerShortVideoHolder(chain.thisObject)
@@ -1183,30 +4458,91 @@ object Hooks {
             }
             ham(c, "onBind", "shortHolderBind") { chain ->
                 val result = chain.proceed()
-                // RecyclerView Holder 可能复用给下一集，旧集的暂停状态不能沿用。
+
                 registerShortVideoHolder(chain.thisObject, 0)
                 if (gRestoreControlsOnPause) refreshVideoPauseState("short-holder-bind")
                 result
             }
 
-            // z3(false) 会重新显示 c3 播放器遮罩。模块正在隐藏控件时，把它改为
-            // z3(true)，避免首页按钮虽已隐藏、视频却仍被半透明遮罩压暗。
-            module.hook(c.getDeclaredMethod("z3", Boolean::class.java))
+            try {
+                val nativeClean = c.getDeclaredMethod(
+                    gNames.shortControlsMethod,
+                    Boolean::class.java,
+                    Boolean::class.java,
+                )
+                module.hook(nativeClean)
+                    .setId("shortNativeClean")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        if (!shouldForceShortVideoCleanMask()) return@Hooker chain.proceed()
+                        try {
+                            val requested = chain.getArg(0) as? Boolean
+                            if (requested == false) {
+                                val args = (chain.args as Array<Any?>).copyOf()
+                                args[0] = true
+                                LogUtil.incr("shortNativeCleanForce")
+                                return@Hooker chain.proceed(args)
+                            }
+                        } catch (_: Throwable) {}
+                        chain.proceed()
+                    })
+                LogUtil.info("  ✓ native clean-screen ${gNames.shortHolder}.${gNames.shortControlsMethod}")
+            } catch (e: Throwable) {
+                LogUtil.warn("  native clean-screen hook missing: $e")
+            }
+
+            module.hook(c.getDeclaredMethod(gNames.shortMaskMethod, Boolean::class.java))
                 .setId("shortMask")
                 .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(Hooker { chain ->
-                    if (shouldForceShortVideoCleanMask() && chain.getArg(0) as? Boolean == false) {
-                        val args = (chain.args as Array<Any?>).copyOf()
-                        args[0] = true
-                        chain.proceed(args)
-                    } else {
-                        chain.proceed()
-                    }
+                    val result = chain.proceed()
+                    if (shouldForceShortVideoCleanMask()) rememberAndForceShortVideoMaskInvisible(chain.thisObject)
+                    result
                 })
         } catch (_: Throwable) {}
+
+        if (gPkg == "com.phoenix.read") {
+            try {
+                val homeFragment = Class.forName(
+                    "com.dragon.read.component.shortvideo.impl.v2.SeriesBookMallTabFragment",
+                    false,
+                    classLoader,
+                )
+                hac(homeFragment, "cnHomeFragmentCtor") { chain ->
+                    val result = chain.proceed()
+                    registerCnHomeFragment(chain.thisObject)
+                    result
+                }
+                val homeMaskMethod = gNames.homeFragmentMaskMethod
+                if (homeMaskMethod.isBlank()) throw NoSuchMethodException("homeFragmentMaskMethod blank")
+                module.hook(homeFragment.getDeclaredMethod(homeMaskMethod, Boolean::class.java))
+                    .setId("cnHomeMask")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        registerCnHomeFragment(chain.thisObject)
+
+                        val result = if (shouldForceShortVideoCleanMask()) {
+                            try {
+                                val requested = chain.getArg(0) as? Boolean
+                                if (requested == false) {
+                                    val args = (chain.args as Array<Any?>).copyOf()
+                                    args[0] = true
+                                    LogUtil.incr("homeNativeCleanForce")
+                                    chain.proceed(args)
+                                } else chain.proceed()
+                            } catch (_: Throwable) { chain.proceed() }
+                        } else chain.proceed()
+                        forceCnHomeFragmentMaskInvisible(chain.thisObject)
+                        result
+                    })
+                LogUtil.info("  ✓ CN home fragment mask ${gNames.homeFragmentMaskMethod}/${gNames.homeFragmentMaskField}")
+            } catch (e: Throwable) {
+                LogUtil.warn("  CN home fragment mask missing: $e")
+            }
+        }
+
         LogUtil.info("  ✓ short-video playback detectors: $shortPlaybackHookCount")
 
-        // 早期命令检测；最终由 Layer 的 VideoStateInquirer 延迟复核。
         try {
             val c = Class.forName("com.ss.android.videoshop.mediaview.LayerHostMediaLayout", false, classLoader)
             ham(c, "execCommand", "videoCmd") { chain ->
@@ -1230,12 +4566,12 @@ object Hooks {
             ham(c, "onVideoPlay", "videoPlayDirect") { chain ->
                 val result = chain.proceed()
                 setVideoPaused(false, "LayerHostMediaLayout#onVideoPlay")
+                scheduleDefaultSpeedApply("LayerHostMediaLayout#onVideoPlay")
                 result
             }
             LogUtil.info("  ✓ video command detector")
         } catch (e: Throwable) { LogUtil.warn("  video command detector missing: $e") }
 
-        // 保存当前页面的真实工具栏 Layer，供暂停后主动显示、恢复后主动隐藏。
         fun hookToolbarLayer(className: String, hookId: String) {
             try {
                 val c = Class.forName(className, false, classLoader)
@@ -1251,87 +4587,221 @@ object Hooks {
         hookToolbarLayer("com.dragon.read.pages.video.layers.toolbarlayer.ToolbarLayerFixed", "fixedLayer")
         hookToolbarLayer("com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer", "customLayer")
 
-        // 启动时有些 Layer 可能早于本模块构造器 Hook 创建；首次使用 show/hide 时补登记。
         fun trackLayerFromCall(chain: XposedInterface.Chain) {
             try { registerVideoToolbarLayer(chain.thisObject) } catch (_: Throwable) {}
         }
 
-        // 5. 播放器工具栏 — 所有 show 调用直接跳过（return null），不执行任何显示逻辑
-        // 5a. ToolbarLayerFixed.T(boolean) — 底部工具栏
         try { val c = Class.forName("com.dragon.read.pages.video.layers.toolbarlayer.ToolbarLayerFixed", false, classLoader)
-            ham(c, "T", "pb") { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("btmBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } }
+            ham(c, gNames.fixedToolbarShowMethod, "pb") { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("btmBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } }
             LogUtil.info("  ✓ playerBtm") } catch (e: Exception) { LogUtil.warn("  ToolbarLayerFixed 未找到") }
-        // 5b. CustomizeToolbarLayer.Q(boolean) — 顶部工具栏入口
-        try { val c = Class.forName("com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer", false, classLoader)
-            ham(c, "Q", "pt") { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("topBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } }
-            LogUtil.info("  ✓ playerTop") } catch (e: Exception) { LogUtil.warn("  CustomizeToolbarLayer 未找到") }
-        // 5c. CustomizeToolbarLayer.S(boolean,boolean,boolean) — 真正的 show/hide 实现
-        try { val c = Class.forName("com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer", false, classLoader)
-            module.hook(c.getDeclaredMethod("S", Boolean::class.java, Boolean::class.java, Boolean::class.java)).setId("ctS").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("topBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } })
-            LogUtil.info("  ✓ CustomizeToolbarLayer.S") } catch (e: Exception) { LogUtil.warn("  CustomizeToolbarLayer.S 未找到") }
-        // 5d. gt7.c.a(boolean) — 所有工具栏基类 show/hide
-        try { val c = Class.forName("gt7.c", false, classLoader)
-            module.hook(c.getDeclaredMethod("a", Boolean::class.java)).setId("gt7c").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("toolbarBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } })
-            LogUtil.info("  ✓ gt7.c.a") } catch (e: Exception) { LogUtil.warn("  gt7.c 未找到") }
 
-        // 6. 金宝箱/挂件
-        try { val c = Class.forName("com.dragon.read.component.biz.impl.BsGoldBoxServiceImpl", false, classLoader); module.hook(c.getDeclaredMethod("tryAttach")).setId("gb").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }); LogUtil.info("  ✓ goldBox") } catch (e: Exception) { LogUtil.warn("  BsGoldBoxServiceImpl 未找到") }
+        try { val c = Class.forName("com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer", false, classLoader)
+            ham(c, gNames.customizeToolbarShowMethod, "pt") { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("topBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } }
+            LogUtil.info("  ✓ playerTop") } catch (e: Exception) { LogUtil.warn("  CustomizeToolbarLayer 未找到") }
+
+        try { val c = Class.forName("com.dragon.read.pages.video.customizelayers.CustomizeToolbarLayer", false, classLoader)
+            module.hook(c.getDeclaredMethod(gNames.customizeToolbarApplyMethod, Boolean::class.java, Boolean::class.java, Boolean::class.java)).setId("ctS").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> trackLayerFromCall(chain); if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("topBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() } })
+            LogUtil.info("  ✓ CustomizeToolbarLayer.${gNames.customizeToolbarApplyMethod}") } catch (e: Exception) { LogUtil.warn("  CustomizeToolbarLayer.${gNames.customizeToolbarApplyMethod} 未找到") }
+
+        try { val c = Class.forName(gNames.toolbarBase, false, classLoader)
+            hac(c, "toolbarBaseCtor") { chain -> val r = chain.proceed(); registerToolbarBaseLayer(chain.thisObject); r }
+            module.hook(c.getDeclaredMethod("a", Boolean::class.java)).setId("gt7c").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain ->
+                registerToolbarBaseLayer(chain.thisObject)
+                if (!gMasterOn || !gPlayerOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { LogUtil.incr("toolbarBlock"); null } else chain.proceed() } catch (_: Exception) { chain.proceed() }
+            })
+            LogUtil.info("  ✓ ${gNames.toolbarBase}.a") } catch (e: Exception) { LogUtil.warn("  ${gNames.toolbarBase} 未找到") }
+
+        try {
+            val mgrClass = Class.forName("com.dragon.read.base.ssconfig.SsConfigMgr", false, classLoader)
+            ham(mgrClass, "getABValueJson", "downloadLimitAB") { chain ->
+                try {
+                    val key = chain.getArg(0)?.toString()
+                    if (key == DOWNLOAD_LIMIT_AB_KEY && downloadUnlimitEnabledNow()) {
+                        val json = customDownloadLimitJson()
+                        LogUtil.incr("downloadLimitABOverride")
+                        LogUtil.info("download limit override: SsConfigMgr.getABValueJson -> $json profile=${gNames.profileId}")
+                        return@ham json
+                    }
+                } catch (e: Throwable) {
+                    LogUtil.warn("download limit AB override failed: ${e.javaClass.simpleName}: ${e.message}")
+                }
+                chain.proceed()
+            }
+            LogUtil.info("  ✓ 下载数量限制 AB Hook SsConfigMgr.getABValueJson")
+        } catch (e: Throwable) {
+            LogUtil.warn("  下载数量限制 AB Hook 失败: $e")
+        }
+
+        try {
+            val svcClass = Class.forName("s93.q", false, classLoader)
+            val a7Methods = svcClass.declaredMethods.filter { it.name == "A7" && it.parameterCount >= 1 }
+            a7Methods.forEachIndexed { index, method ->
+                module.hook(method).setId("downloadLimitKmpA7_$index")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        val key = try { chain.getArg(0)?.toString() } catch (_: Throwable) { null }
+                        if (key == DOWNLOAD_LIMIT_AB_KEY && downloadUnlimitEnabledNow()) {
+                            val json = customDownloadLimitJson()
+                            LogUtil.incr("downloadLimitKmpOverride")
+                            LogUtil.info("download limit override: s93.q.A7 -> $json profile=${gNames.profileId}")
+                            json
+                        } else chain.proceed()
+                    })
+            }
+            if (a7Methods.isNotEmpty()) LogUtil.info("  ✓ 下载数量限制 KMP Hook s93.q.A7")
+        } catch (_: Throwable) {}
+
+        try {
+            val configClass = Class.forName("xh5.f", false, classLoader)
+            hac(configClass, "downloadLimitConfigCtor") { chain ->
+                val result = chain.proceed()
+                if (downloadUnlimitEnabledNow() && overwriteDownloadLimitObject(chain.thisObject)) {
+                    LogUtil.incr("downloadLimitObjectOverride")
+                    LogUtil.info("download limit override: xh5.f ctor a/b/c=${currentDownloadLimitValues()}")
+                }
+                result
+            }
+            try {
+                val serializerClass = Class.forName("xh5.f\$a", false, classLoader)
+                ham(serializerClass, "deserialize", "downloadLimitDeserialize") { chain ->
+                    val result = chain.proceed()
+                    if (downloadUnlimitEnabledNow() && overwriteDownloadLimitObject(result)) {
+                        LogUtil.incr("downloadLimitDeserializeOverride")
+                        LogUtil.info("download limit override: xh5.f\$a.deserialize a/b/c=${currentDownloadLimitValues()}")
+                    }
+                    result
+                }
+            } catch (_: Throwable) {}
+            LogUtil.info("  ✓ 下载数量限制对象 Hook xh5.f")
+        } catch (_: Throwable) {}
+
+        try { val c = Class.forName("com.dragon.read.component.biz.impl.BsGoldBoxServiceImpl", false, classLoader); ham(c, "tryAttach", "gb") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }; LogUtil.info("  ✓ goldBox") } catch (e: Exception) { LogUtil.warn("  BsGoldBoxServiceImpl 未找到") }
         try { val c = Class.forName("com.bytedance.ug.sdk.novel.pendant.PlanPendantServiceImpl", false, classLoader); ham(c, "triggerEvent", "pd") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }; LogUtil.info("  ✓ pendant") } catch (e: Exception) { LogUtil.warn("  PlanPendantServiceImpl 未找到") }
 
-        // 7. 红包
         try { var rc: Class<*>? = null; try { rc = Class.forName("com.dragon.read.component.biz.impl.bookmall.holder.video.VideoRedPacketHolder", false, classLoader) } catch (_: Exception) {}; if (rc != null) { hac(rc, "rp") { chain -> if (!gMasterOn || !gAdOn) chain.proceed() else { val r = chain.proceed(); try { val iv = chain.thisObject.javaClass.getField("itemView").get(chain.thisObject) as? View; iv?.visibility = View.GONE; iv?.layoutParams = ViewGroup.LayoutParams(0, 0) } catch (_: Exception) {}; r } }; LogUtil.info("  ✓ redPack") } } catch (e: Exception) { LogUtil.warn("redPack: $e") }
 
-        // 8. dw4.t.p4 仅负责横屏入口按钮，不再把它误当成“全部控件”恢复入口。
-        try { val c = Class.forName("dw4.t", false, classLoader); module.hook(c.getDeclaredMethod("p4", Boolean::class.java)).setId("fb").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { val na = (chain.args as Array<Any?>).copyOf(); na[0] = false; chain.proceed(na) } else chain.proceed() } catch (_: Exception) { chain.proceed() } }); LogUtil.info("  ✓ dw4.t.p4") } catch (e: Exception) { LogUtil.warn("  dw4.t 未找到") }
+        try { val c = Class.forName(gNames.shortHolder, false, classLoader); module.hook(c.getDeclaredMethod(gNames.shortLandscapeMethod, Boolean::class.java)).setId("fb").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { if (chain.getArg(0) as? Boolean == true) { val na = (chain.args as Array<Any?>).copyOf(); na[0] = false; chain.proceed(na) } else chain.proceed() } catch (_: Exception) { chain.proceed() } }); LogUtil.info("  ✓ ${gNames.shortHolder}.${gNames.shortLandscapeMethod}") } catch (e: Exception) { LogUtil.warn("  ${gNames.shortHolder} 未找到") }
 
-        // 9. inflate
-        // is7 只存在于首页，是“菜单 / 漫画 / 推荐 / 搜索”整块顶部栏。按用户设置把它
-        // 归入“隐藏控件”，但不再把它和状态栏开关联动；暂停恢复时也会一起恢复。
         try {
             val c = Class.forName("android.view.LayoutInflater", false, classLoader)
             ham(c, "inflate", "inf") { chain ->
                 val result = chain.proceed()
                 if (result is ViewGroup) {
                     LogUtil.incr("inflate")
-                    resolveEntryId("h8s", result)
-                    resolveEntryId("inx", result)
-                    resolveEntryId("ac5", result)
-                    resolveEntryId("is7", result)
-                    resolveEntryId("hh", result)
-                    resolveEntryId("book_container", result)
-                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) {
-                        scanTreeQuick(result)
-                    }
+                    installSeriesToolbarGuardsInTree(result)
+                    gNames.hideIdNames.forEach { resolveEntryId(it, result) }
+                    gNames.progressIdNames.forEach { resolveEntryId(it, result, gProgressIdSet, "进度条资源") }
+                    resolvePauseRestoreIds(result)
+                    if (gMasterOn && gControlOn && !(gRestoreControlsOnPause && gVideoPaused)) scanTreeQuick(result)
+                    if (gMasterOn && gRefreshOff) scanTreeRefreshAccessory(result)
+                    if (gMasterOn && gPlayerOn && !(gRestoreControlsOnPause && gVideoPaused)) scanTreePlayer(result)
+                    if (gMasterOn && gProgressOff && !(gRestoreControlsOnPause && gVideoPaused)) scanTreeProgress(result)
                 }
                 result
             }
             LogUtil.info("  ✓ inflate")
         } catch (e: Exception) { LogUtil.error("inflate", e) }
 
-        // 10. setVisibility / addView
-        try { val c = Class.forName("android.view.View", false, classLoader); ham(c, "setVisibility", "sv") { chain -> if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else try { LogUtil.incr("setVis"); val tv = chain.getArg(0) as? Int; if (tv == View.VISIBLE && quickMatch(chain.thisObject as? View)) { val na = (chain.args as Array<Any?>).copyOf(); na[0] = View.INVISIBLE; chain.proceed(na) } else chain.proceed() } catch (_: Exception) { chain.proceed() } }; LogUtil.info("  ✓ setVis") } catch (e: Exception) { LogUtil.error("setVis", e) }
-        try { val c = Class.forName("android.view.ViewGroup", false, classLoader); ham(c, "addView", "av") { chain -> if (!gMasterOn || !gControlOn || (gRestoreControlsOnPause && gVideoPaused)) chain.proceed() else { try { LogUtil.incr("addView"); val v = chain.getArg(0) as? View; if (v != null && quickMatch(v)) blindView(v) } catch (_: Exception) {}; chain.proceed() } }; LogUtil.info("  ✓ addView") } catch (e: Exception) { LogUtil.error("addView", e) }
+        try {
+            val c = Class.forName("android.view.View", false, classLoader)
+            ham(c, "setVisibility", "sv") { chain ->
+                if (gInternalViewMutation.get() == true) return@ham chain.proceed()
+                val view = chain.thisObject as? View
+                val targetVisibility = chain.getArg(0) as? Int
 
-        // 11. RecyclerView 卡片
+                if (view != null && targetVisibility != null) {
+                    synchronized(gSavedViewStates) {
+                        gSavedViewStates[view]?.visibility = targetVisibility
+                    }
+                }
+
+                if (!gMasterOn || (gRestoreControlsOnPause && gVideoPaused)) return@ham chain.proceed()
+                try {
+                    LogUtil.incr("setVis")
+                    if (targetVisibility == View.VISIBLE && view != null) {
+                        val replacement = when {
+                            shouldForceShortVideoCleanMask() && synchronized(gCleanMaskViews) { gCleanMaskViews.containsKey(view) } -> View.INVISIBLE
+                            gRefreshOff && (synchronized(gKnownRefreshAccessoryViews) { gKnownRefreshAccessoryViews.containsKey(view) } || isRefreshAccessoryContainer(view)) -> {
+                                synchronized(gKnownRefreshAccessoryViews) { gKnownRefreshAccessoryViews[view] = true }
+                                View.GONE
+                            }
+                            gControlOn && isNativeMainBottomFrame(view) -> {
+                                synchronized(gKnownMainBottomNavViews) { gKnownMainBottomNavViews[view] = true }
+                                View.GONE
+                            }
+                            gControlOn && isNativeVideoFeedBottomMask(view) -> {
+                                synchronized(gKnownBottomBackdropViews) { gKnownBottomBackdropViews[view] = true }
+                                mainHandler.post { enforceNativeMainBottomHidden(gCurrentActivity) }
+                                View.GONE
+                            }
+                            gControlOn && isHomeBottomBackdropMarker(view) -> {
+                                mainHandler.post { collapseHomeBottomBackdrop(view) }
+                                View.GONE
+                            }
+                            gControlOn && (quickMatch(view) || isKnownMainBottomNav(view) || isMainBottomNavContainer(view) || isKnownBottomBackdrop(view)) ->
+                                if (shouldCollapseControl(view)) View.GONE else View.INVISIBLE
+                            gPlayerOn && seriesToolbarKind(view) != 0 -> {
+                                rememberSeriesToolbar(view, seriesToolbarKind(view))
+                                View.INVISIBLE
+                            }
+                            gProgressOff && isProgressBar(view) -> View.GONE
+                            else -> null
+                        }
+                        if (replacement != null) {
+                            rememberViewState(view, View.VISIBLE)
+                            val args = (chain.args as Array<Any?>).copyOf()
+                            args[0] = replacement
+                            return@ham chain.proceed(args)
+                        }
+                    }
+                    chain.proceed()
+                } catch (_: Exception) { chain.proceed() }
+            }
+            LogUtil.info("  ✓ setVis")
+        } catch (e: Exception) { LogUtil.error("setVis", e) }
+        try {
+            val c = Class.forName("android.view.ViewGroup", false, classLoader)
+            ham(c, "addView", "av") { chain ->
+                val v = try { chain.getArg(0) as? View } catch (_: Throwable) { null }
+
+                val result = chain.proceed()
+                try {
+                    if (v != null) installSeriesToolbarGuardsInTree(v)
+                    if (!gMasterOn || (gRestoreControlsOnPause && gVideoPaused)) return@ham result
+                    LogUtil.incr("addView")
+                    if (v != null) {
+                        if (gControlOn && isNativeMainBottomFrame(v)) collapseNativeMainBottomFrame(v)
+                        else if (gControlOn && isNativeVideoFeedBottomMask(v)) collapseNativeVideoFeedBottomMask(v)
+                        else if (gControlOn && (quickMatch(v) || isMainBottomNavContainer(v))) blindView(v)
+                        if (gRefreshOff && isRefreshAccessoryContainer(v)) hideRefreshAccessory(v)
+                        if (gPlayerOn) hideSeriesToolbarView(v)
+                        if (gProgressOff && isProgressBar(v) && v.visibility == View.VISIBLE) {
+                            rememberViewState(v)
+                            setModuleVisibility(v, View.GONE)
+                        }
+                    }
+                } catch (_: Exception) {}
+                result
+            }
+            LogUtil.info("  ✓ addView")
+        } catch (e: Exception) { LogUtil.error("addView", e) }
+
         try { val c = Class.forName("com.dragon.read.recyler.AbsRecyclerViewHolder", false, classLoader); hac(c, "cc") { chain -> if (gMasterOn) try { val v = chain.getArg(0) as? View; if (v != null) { if (gControlOn) scanTreeQuick(v) else scanTreeRestore(v) } } catch (_: Exception) {}; chain.proceed() }; try { module.hook(c.getDeclaredMethod("onBind", Object::class.java, Int::class.java)).setId("cb").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn) try { val iv = chain.thisObject.javaClass.getField("itemView").get(chain.thisObject) as? View; if (iv != null) { if (gControlOn) scanTreeQuick(iv) else scanTreeRestore(iv) } } catch (_: Exception) {}; chain.proceed() }) } catch (_: Exception) {}; LogUtil.info("  ✓ card") } catch (e: Exception) { LogUtil.warn("  AbsRecyclerViewHolder 未找到") }
 
-        // 12. 下拉刷新
         try { val c = Class.forName("androidx.swiperefreshlayout.widget.SwipeRefreshLayout", false, classLoader); module.hook(c.getDeclaredMethod("onInterceptTouchEvent", android.view.MotionEvent::class.java)).setId("sw").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gRefreshOff) false else chain.proceed() }); LogUtil.info("  ✓ swipe") } catch (e: Exception) { LogUtil.warn("  SwipeRefreshLayout 未找到") }
 
-        // 13. 顶部下滑
-        try { val c = Class.forName("ev7.b", false, classLoader); module.hook(c.getDeclaredMethod("onTouchEvent", android.view.MotionEvent::class.java)).setId("tz1").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gTopZoneOn && handleTopZoneEvent(chain.getArg(0) as? android.view.MotionEvent)) true else chain.proceed() }); LogUtil.info("  ✓ ev7.b") } catch (e: Exception) { LogUtil.warn("  ev7.b 未找到") }
+        try { val c = Class.forName(gNames.topZoneTouch, false, classLoader); module.hook(c.getDeclaredMethod("onTouchEvent", android.view.MotionEvent::class.java)).setId("tz1").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gTopZoneOn && handleTopZoneEvent(chain.getArg(0) as? android.view.MotionEvent)) true else chain.proceed() }); LogUtil.info("  ✓ ${gNames.topZoneTouch}") } catch (e: Exception) { LogUtil.warn("  ${gNames.topZoneTouch} 未找到") }
         try { val c = Class.forName("android.app.Activity", false, classLoader); module.hook(c.getDeclaredMethod("dispatchTouchEvent", android.view.MotionEvent::class.java)).setId("tz2").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gTopZoneOn && handleTopZoneEvent(chain.getArg(0) as? android.view.MotionEvent)) true else chain.proceed() }); LogUtil.info("  ✓ dispatchTouch") } catch (e: Exception) { LogUtil.error("tz2", e) }
 
-        // 14. 生命周期
         try {
             val c = Class.forName("android.app.Activity", false, classLoader)
             module.hook(c.getDeclaredMethod("onCreate", android.os.Bundle::class.java)).setId("oc").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain ->
                 LogUtil.incr("onCreate")
                 val a = chain.thisObject as? Activity
-                // 这里只读取设置，不访问 Window；主题和 AppCompat 的窗口特性先照常初始化。
+
                 try {
                     if (a != null) {
-                        // 仅保存引用，供 onCreate 期间的状态栏高度 Hook 判断是否为恢复中的自由小窗。
+
                         gCurrentActivity = a
                         initPrefs(a.applicationContext)
                         appCtx = a.applicationContext
@@ -1353,7 +4823,9 @@ object Hooks {
                 LogUtil.incr("onResume")
                 val a = chain.thisObject as? Activity
                 gCurrentActivity = a
-                // 更新提示：作用域启动后如有新版，在 Activity 可见时弹一次
+
+                scheduleSettingsEntryInjection(a)
+
                 try {
                     if (a != null) {
                         UpdateChecker.showUpdateDialogIfNeeded(a)
@@ -1391,8 +4863,7 @@ object Hooks {
                 val result = chain.proceed()
                 mainHandler.postDelayed({
                     try {
-                        // 页面跳转也会触发 Activity.onPause，不能直接当作视频暂停。
-                        // 仅在当前 Activity 仍可见时查询真实播放器状态。
+
                         if (a != null && a.hasWindowFocus() && !a.isFinishing) refreshVideoPauseState("activity-onPause")
                     } catch (_: Throwable) {}
                 }, 120L)
@@ -1401,15 +4872,117 @@ object Hooks {
             LogUtil.info("  ✓ onPause")
         } catch (e: Exception) { LogUtil.error("lifecycle", e) }
 
-        // 15. 设置页
-        try { val c = Class.forName("com.dragon.read.component.biz.impl.mine.settings.SettingsActivity", false, classLoader); module.hook(c.getDeclaredMethod("onCreate", android.os.Bundle::class.java)).setId("st").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> val a = chain.thisObject as? Activity; gSettingsActivity = a; val r = chain.proceed(); if (a != null) mainHandler.postDelayed({ injectSettingsButton(a) }, 800); r }); LogUtil.info("  ✓ settings") } catch (e: Exception) { LogUtil.warn("  SettingsActivity 未找到") }
+        val settingsSpec = nativeSettingsSpec()
+        var nativeSettingsListHookCount = 0
+        for ((classIndex, settingsClassName) in listOf(
+            "com.dragon.read.component.biz.impl.mine.settings.SettingsActivity",
+            "com.dragon.read.component.biz.impl.mine.settings.KmpSettingsActivity",
+        ).withIndex()) {
+            try {
+                val settingsClass = Class.forName(settingsClassName, false, classLoader)
+                settingsClass.declaredMethods
+                    .filter { it.name in settingsSpec.listMethods && java.util.List::class.java.isAssignableFrom(it.returnType) }
+                    .forEachIndexed { methodIndex, method ->
+                        module.hook(method)
+                            .setId("nativeSettingsList_${classIndex}_$methodIndex")
+                            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                            .intercept(Hooker { chain ->
+                                val result = chain.proceed()
+                                injectNativeSettingsList(result, classLoader, settingsSpec)
+                                result
+                            })
+                        nativeSettingsListHookCount++
+                        LogUtil.info("  ✓ native settings list $settingsClassName.${method.name} -> ${settingsSpec.itemClass}")
+                    }
+            } catch (_: Throwable) {}
+        }
 
-        // 16. 保留原有 OLED 防灼伤亮度拦截；它只影响物理屏幕亮度。
-        // 截图中能被记录下来的首页发暗由上面的 c3 播放器遮罩负责处理。
         try {
-            val hClass = Class.forName("l83.h", false, classLoader)
-            val brightActionClass = Class.forName("n83.a", false, classLoader)
+            val clickClass = Class.forName(settingsSpec.clickClass, false, classLoader)
+            clickClass.declaredMethods.filter { it.name == "onClick" }.forEachIndexed { index, method ->
+                module.hook(method)
+                    .setId("nativeSettingsClick_$index")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        val host = chain.thisObject
+                        if (host != null && boundSettingsTitle(host) == "模块设置") {
+                            LogUtil.info("点击原生模块设置项 | ${settingsSpec.clickClass}")
+                            mainHandler.post { showPanel(gSettingsActivity ?: gCurrentActivity) }
+                            null
+                        } else chain.proceed()
+                    })
+            }
+            LogUtil.info("  ✓ native settings click ${settingsSpec.clickClass}")
+        } catch (e: Throwable) {
+            LogUtil.warn("  ${settingsSpec.clickClass} 设置点击 Hook 失败: $e")
+        }
+
+        settingsSpec.checkedClass?.let { checkedClassName ->
+            try {
+                val checkedClass = Class.forName(checkedClassName, false, classLoader)
+                checkedClass.declaredMethods.filter { it.name == "onCheckedChanged" }.forEachIndexed { index, method ->
+                    module.hook(method)
+                        .setId("nativeSettingsChecked_$index")
+                        .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(Hooker { chain ->
+                            val host = chain.thisObject
+                            if (host != null && boundSettingsTitle(host) == "模块设置") {
+                                val checked = try { chain.getArg(1) as? Boolean } catch (_: Throwable) { null }
+                                if (checked != null) {
+                                    gMasterOn = checked
+                                    savePref("master_on", checked)
+                                    if (!checked) {
+                                        restoreAllSavedViews()
+                                        restoreShortVideoNativeControls()
+                                        setVideoToolbarsVisible(true)
+                                    }
+                                    val notificationCtx = appCtx ?: gCurrentActivity?.applicationContext
+                                    if (notificationCtx != null) createNotification(notificationCtx)
+                                    applyToCurrent()
+                                    LogUtil.info("原生设置项同步模块总开关 -> $checked")
+                                }
+                            }
+                            chain.proceed()
+                        })
+                }
+                LogUtil.info("  ✓ native settings checked $checkedClassName")
+            } catch (e: Throwable) {
+                LogUtil.warn("  $checkedClassName 设置开关 Hook 失败: $e")
+            }
+        }
+
+        if (nativeSettingsListHookCount == 0) {
+            LogUtil.warn("  原生设置列表 Hook 未找到 | profile=${gNames.profileId} | methods=${settingsSpec.listMethods}")
+        }
+
+        var settingsHookCount = 0
+        for ((index, settingsClassName) in listOf(
+            "com.dragon.read.component.biz.impl.mine.settings.SettingsActivity",
+            "com.dragon.read.component.biz.impl.mine.settings.KmpSettingsActivity",
+        ).withIndex()) {
+            try {
+                val c = Class.forName(settingsClassName, false, classLoader)
+                module.hook(c.getDeclaredMethod("onCreate", android.os.Bundle::class.java))
+                    .setId("st$index")
+                    .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                    .intercept(Hooker { chain ->
+                        val a = chain.thisObject as? Activity
+                        gSettingsActivity = a
+                        val r = chain.proceed()
+                        if (a != null) scheduleSettingsEntryInjection(a)
+                        r
+                    })
+                settingsHookCount++
+                LogUtil.info("  ✓ settings $settingsClassName")
+            } catch (_: Throwable) {}
+        }
+        if (settingsHookCount == 0) LogUtil.warn("  设置页 Activity 未找到")
+
+        try {
+            val hClass = Class.forName(gNames.oledBright, false, classLoader)
+            val brightActionClass = Class.forName(gNames.oledBrightAction, false, classLoader)
             module.hook(hClass.getDeclaredMethod("a", java.util.List::class.java)).setId("oled").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain ->
+                if (!gMasterOn || !gOledProtectOn) return@Hooker chain.proceed()
                 try {
                     val list = chain.getArg(0) as? java.util.List<*>
                     if (list != null && list.isNotEmpty()) {
@@ -1424,20 +4997,16 @@ object Hooks {
                 } catch (_: Exception) {}
                 chain.proceed()
             })
-            LogUtil.info("  ✓ oledBright")
-        } catch (e: Exception) { LogUtil.warn("  l83.h OLED 未找到: $e") }
+            LogUtil.info("  ✓ OLED 亮度拦截（默认关闭）")
+        } catch (e: Exception) { LogUtil.warn("  ${gNames.oledBright} OLED 未找到: $e") }
 
+        try { val c = Class.forName(gNames.pauseAdEntryClass, false, classLoader)
+            ham(c, gNames.pauseAdEntryMethod, "pauseAdEntry") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }
+            LogUtil.info("  ✓ 暂停广告入口 ${gNames.pauseAdEntryClass}.${gNames.pauseAdEntryMethod}")
+        } catch (e: Exception) {
+            LogUtil.warn("  暂停广告入口 ${gNames.pauseAdEntryClass}.${gNames.pauseAdEntryMethod} 未找到: $e")
+        }
 
-
-
-        // ============================================================
-        // 13. 去广告：剧集暂停广告（两个视频中间）+ 片尾广告 + 角标广告
-        // ============================================================
-        // 13a. 暂停广告请求入口 j4.b (FullScreenViewInjectAgency 内部)
-        try { val c = Class.forName("com.dragon.read.component.shortvideo.impl.inject.view.j4", false, classLoader)
-            ham(c, "b", "pauseAdEntry") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }
-            LogUtil.info("  ✓ 暂停广告入口 j4.b") } catch (e: Exception) { LogUtil.warn("  j4.b 未找到: $e") }
-        // 13b. SeriesPauseAdImpl（暂停广告服务实现）
         try { val c = Class.forName("com.dragon.read.ad.onestop.seriespause.impl.SeriesPauseAdImpl", false, classLoader)
             ham(c, "canShowPauseAd", "spCan") { chain -> if (gMasterOn && gAdOn) false else chain.proceed() }
             ham(c, "enablePauseAd", "spEnable") { chain -> if (gMasterOn && gAdOn) false else chain.proceed() }
@@ -1445,28 +5014,25 @@ object Hooks {
             ham(c, "onPauseAdShow", "spShow") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }
             ham(c, "enableCoinBox", "spCoin") { chain -> if (gMasterOn && gAdOn) false else chain.proceed() }
             LogUtil.info("  ✓ SeriesPauseAdImpl 拦截") } catch (e: Exception) { LogUtil.warn("  SeriesPauseAdImpl 未找到: $e") }
-        // 13c. 片尾广告层 AdVideoEndLayer
+
         try { val c = Class.forName("com.dragon.read.pages.video.layers.advideoendlayer.AdVideoEndLayer", false, classLoader)
             ham(c, "handleVideoEvent", "veAd") { chain -> if (gMasterOn && gAdOn) { try { val ev = chain.getArg(0); val m = ev?.javaClass?.getMethod("getType"); if (m != null && (m.invoke(ev) as? Int) == 102) return@ham false } catch (_: Exception) {} }; chain.proceed() }
-            ham(c, "I", "veAdI") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }
+            ham(c, gNames.adVideoEndShowMethod, "veAdI") { chain -> if (gMasterOn && gAdOn) null else chain.proceed() }
             LogUtil.info("  ✓ 片尾广告层") } catch (e: Exception) { LogUtil.warn("  AdVideoEndLayer 未找到: $e") }
-        // 13d. 广告图标层 AdIconLayer
+
         try { val c = Class.forName("com.dragon.read.pages.video.layers.adiconlayer.AdIconLayer", false, classLoader)
             ham(c, "handleVideoEvent", "aiAd") { chain -> if (gMasterOn && gAdOn) false else chain.proceed() }
             LogUtil.info("  ✓ 广告图标层") } catch (e: Exception) { LogUtil.warn("  AdIconLayer 未找到: $e") }
 
-        // ============================================================
-        // 14. 解锁 VIP（不再强制显示书封 VIP 蒙层，避免首页视频封面变暗）
-        // ============================================================
         try { val c = Class.forName("com.dragon.read.component.biz.impl.privilege.PrivilegeManager", false, classLoader)
-            ham(c, "isVip", "vipIsVip") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "isAnyVip", "vipAny") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "canReadShortStory", "vipRead") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "hasVipShortSeriesPrivilege", "vipSeries") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "b", "vipSubType") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "hasNoAdFollAllScene", "vipNoAd") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "hasNoAdForShortSeries", "vipNoAdS") { chain -> if (gVipOn) true else chain.proceed() }
-            // getVipInfo / getAllVipInfo 返回 isVip="1" 的模型，让会员中心显示已解锁
+            ham(c, "isVip", "vipIsVip") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "isAnyVip", "vipAny") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "canReadShortStory", "vipRead") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "hasVipShortSeriesPrivilege", "vipSeries") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "b", "vipSubType") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "hasNoAdFollAllScene", "vipNoAd") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "hasNoAdForShortSeries", "vipNoAdS") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+
             try {
                 val vim = Class.forName("com.dragon.read.user.model.VipInfoModel", false, classLoader)
                 val vct = Class.forName("com.dragon.read.rpc.model.VipCommonSubType", false, classLoader)
@@ -1474,39 +5040,46 @@ object Hooks {
                 vc.isAccessible = true
                 val de = vct.getEnumConstants()[0]
                 val fakeModel = { vc.newInstance("2099-12-31 23:59:59", "1", "99999999", true, false, 0, true, de) }
-                c.declaredMethods.filter { it.name == "getVipInfo" }.forEachIndexed { i, m -> try { module.hook(m).setId("vipGetInfo_$i").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gVipOn) fakeModel() else chain.proceed() }) } catch (_: Exception) {} }
-                module.hook(c.getDeclaredMethod("getAllVipInfo")).setId("vipGetAll").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gVipOn) java.util.Collections.singletonList(fakeModel()) else chain.proceed() })
+                c.declaredMethods.filter { it.name == "getVipInfo" }.forEachIndexed { i, m -> try { module.hook(m).setId("vipGetInfo_$i").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gVipOn) fakeModel() else chain.proceed() }) } catch (_: Exception) {} }
+                module.hook(c.getDeclaredMethod("getAllVipInfo")).setId("vipGetAll").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gVipOn) java.util.Collections.singletonList(fakeModel()) else chain.proceed() })
                 LogUtil.info("  ✓ getVipInfo 模型")
             } catch (e2: Exception) { LogUtil.warn("  getVipInfo 模型 hook 失败: $e2") }
             LogUtil.info("  ✓ VIP 解锁 (PrivilegeManager)") } catch (e: Exception) { LogUtil.warn("  PrivilegeManager 未找到: $e") }
         try { val c = Class.forName("com.dragon.read.component.NsUserInfoDependImpl", false, classLoader)
-            ham(c, "isVip", "nsVip") { chain -> if (gVipOn) true else chain.proceed() }
+            ham(c, "isVip", "nsVip") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
             try {
                 val vim = Class.forName("com.dragon.read.user.model.VipInfoModel", false, classLoader)
                 val vct = Class.forName("com.dragon.read.rpc.model.VipCommonSubType", false, classLoader)
                 val vc = vim.getDeclaredConstructor(String::class.java, String::class.java, String::class.java, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, vct)
                 vc.isAccessible = true
                 val de = vct.getEnumConstants()[0]
-                module.hook(c.getDeclaredMethod("getVipInfoModel")).setId("vipGetModel").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gVipOn) vc.newInstance("2099-12-31 23:59:59", "1", "99999999", true, false, 0, true, de) else chain.proceed() })
+                module.hook(c.getDeclaredMethod("getVipInfoModel")).setId("vipGetModel").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain -> if (gMasterOn && gVipOn) vc.newInstance("2099-12-31 23:59:59", "1", "99999999", true, false, 0, true, de) else chain.proceed() })
                 LogUtil.info("  ✓ getVipInfoModel")
             } catch (e2: Exception) { LogUtil.warn("  getVipInfoModel hook 失败: $e2") }
             LogUtil.info("  ✓ NsUserInfoDependImpl.isVip") } catch (e: Exception) { LogUtil.warn("  NsUserInfoDependImpl 未找到: $e") }
         try { val c = Class.forName("com.dragon.read.component.NsComicAdDependImpl", false, classLoader)
-            ham(c, "isVipUser", "comicVip") { chain -> if (gVipOn) true else chain.proceed() }
+            ham(c, "isVipUser", "comicVip") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
             LogUtil.info("  ✓ NsComicAdDependImpl.isVipUser") } catch (e: Exception) { LogUtil.warn("  NsComicAdDependImpl 未找到: $e") }
-        // KMP 侧账号服务：会员中心若为 KMP 页面，走 ec3.h.getVipInfo() 返回 nn5/e
-        try { val c = Class.forName("ec3.h", false, classLoader)
-            val eCls = Class.forName("nn5.e", false, classLoader)
+
+        try {
+            val eCls = Class.forName(gNames.kmpVipModel, false, classLoader)
             val eCtor = eCls.getDeclaredConstructor(String::class.java, String::class.java, String::class.java, java.lang.Boolean::class.java, java.lang.Boolean::class.java, Integer::class.java, java.lang.Boolean::class.java, Integer::class.java, java.lang.Boolean::class.java, Integer::class.java, java.lang.Boolean::class.java)
             eCtor.isAccessible = true
-            module.hook(c.getDeclaredMethod("getVipInfo")).setId("kmpVipInfo").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain ->
-                if (gVipOn) { try { eCtor.newInstance("1", "2099-12-31 23:59:59", "99999999", true, true, 0, true, 0, true, 0, true) } catch (_: Exception) { chain.proceed() } } else chain.proceed()
-            })
-            LogUtil.info("  ✓ ec3.h.getVipInfo") } catch (e: Exception) { LogUtil.warn("  ec3.h 未找到: $e") }
+            var kmpHooked = 0
+            for (svc in gNames.kmpAcctService) {
+                try {
+                    val c = Class.forName(svc, false, classLoader)
+                    module.hook(c.getDeclaredMethod("getVipInfo")).setId("kmpVipInfo_$svc").setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(Hooker { chain ->
+                        if (gMasterOn && gVipOn) { try { eCtor.newInstance("1", "2099-12-31 23:59:59", "99999999", true, true, 0, true, 0, true, 0, true) } catch (_: Exception) { chain.proceed() } } else chain.proceed()
+                    })
+                    kmpHooked++
+                } catch (_: Exception) {}
+            }
+            LogUtil.info("  ✓ KMP getVipInfo hooked=$kmpHooked ($gNames.kmpVipModel)") } catch (e: Exception) { LogUtil.warn("  KMP vip 模型 ${gNames.kmpVipModel} 未找到: $e") }
         try { val c = Class.forName("com.dragon.read.component.biz.impl.NsVipImpl", false, classLoader)
-            ham(c, "isVip", "nvVip") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "isSpecificVipOrHigher", "nvSpec") { chain -> if (gVipOn) true else chain.proceed() }
-            ham(c, "canShowVipCenter", "nvCenter") { chain -> if (gVipOn) true else chain.proceed() }
+            ham(c, "isVip", "nvVip") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "isSpecificVipOrHigher", "nvSpec") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
+            ham(c, "canShowVipCenter", "nvCenter") { chain -> if (gMasterOn && gVipOn) true else chain.proceed() }
             LogUtil.info("  ✓ NsVipImpl") } catch (e: Exception) { LogUtil.warn("  NsVipImpl 未找到: $e") }
 
         LogUtil.info("installBusinessHooks done"); LogUtil.diagDump(true)

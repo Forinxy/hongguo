@@ -5,7 +5,7 @@ coreKtx = "1.17.0"
 appcompat = "1.7.1"
 material = "1.13.0"
 constraintlayout = "2.2.1"
-# LSPosed API 102（完整版本号 102.0.0，发布在 Maven Central）
+
 libxposed = "102.0.0"
 
 [plugins]
@@ -17,5 +17,5 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
-# LSPosed API：compileOnly，不打入 APK，由框架在运行时提供
+
 libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "libxposed" }

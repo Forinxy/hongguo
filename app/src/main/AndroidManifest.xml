@@ -7,6 +7,11 @@
     <uses-permission
         android:name="android.permission.INTERNET" />
 
+    <queries>
+        <package android:name="com.phoenix.read" />
+        <package android:name="com.phoenix.read.oversea.gp" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -15,7 +20,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!-- ============ Xposed 模块声明 ============ -->
         <meta-data
             android:name="xposedmodule"
             android:value="true" />
@@ -26,17 +30,10 @@
             android:name="xposedminversion"
             android:value="102" />
 
-        <!-- ============ 静态作用域声明 ============
-             多个包名用英文逗号分隔，会在 LSPosed 管理器里
-             自动预勾选为模块作用域。
-             注意：这只影响管理器的默认勾选，最终生效范围
-             仍以你在 LSPosed 管理器里实际勾选的为准。
-        -->
         <meta-data
             android:name="xposedscope"
-            android:value="com.phoenix.read,xyz.kejiyu.hongguo" />
+            android:value="com.phoenix.read,com.phoenix.read.oversea.gp,xyz.kejiyu.hongguo" />
 
-        <!-- 入口 Activity，保留作为设置界面 -->
         <activity
             android:name=".MainActivity"
             android:exported="true">

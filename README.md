@@ -1,30 +1,55 @@
-# 红果综合模块
+# 红果模块
 
-红果免费短剧增强模块 —— 基于 LSPosed API 102 的 Xposed 模块，用于增强「红果免费短剧」App（包名 `com.phoenix.read`）。
+基于 libxposed API 102 的 Android 模块源码，包名为 `xyz.kejiyu.hongguo`。
 
-## 功能
+## 当前适配
 
-- 隐藏状态栏 / 顶部控件（可独立开关）
-- 隐藏播放器工具栏、底部小白条、视频进度条
-- 拦截广告 / 挂件 / 片尾广告 / 暂停广告
-- 禁用下拉刷新
-- 顶部区域拦截下滑
-- 解锁 VIP、显示 VIP 图标
-- 暂停后恢复控件
+- 红果免费短剧 `com.phoenix.read` 7.3.3.18
+- 红果免费短剧 `com.phoenix.read` 7.3.2.32
+- 红果短剧 Play `com.phoenix.read.oversea.gp` 7.3.1.32
 
-## 环境要求
+## 环境
 
-- Android 10+（minSdk 29）
-- LSPosed 框架（API 102）
-- 目标 App：红果免费短剧（`com.phoenix.read`）
-- 目前测试版本为（`版本 7.3.2.32(73232)`）和（`版本 7.3.1.32(73132)`）
+- JDK 17
+- Android SDK 36
+- Gradle Wrapper 9.0
+- Android Gradle Plugin 8.13.0
+- Kotlin 2.1.0
+- libxposed API 102
 
+## 构建
 
-## 下载
+Linux / Termux：
 
-- GitHub Releases：<https://github.com/KEJIYUNB/hongguo/releases>
-- Telegram 频道：<https://t.me/Kmodify>
+```bash
+./gradlew assembleRelease
+```
 
-## 免责声明
+Windows：
 
-本项目仅供学习交流使用。使用本项目产生的任何后果由使用者自行承担；若侵犯了您的权益，请联系删除。
+```bat
+gradlew.bat assembleRelease
+```
+
+没有配置私有签名时可以直接构建。需要使用自己的 release keystore 时，将 `keystore.properties.example` 复制为 `keystore.properties`，再填入自己的签名信息。`keystore.properties`、`*.jks` 和 `*.keystore` 已加入 `.gitignore`。
+
+## 项目结构
+
+```text
+app/src/main/kotlin/xyz/kejiyu/hongguo/
+├── MainActivity.kt
+├── MainHook.kt
+├── LogUtil.kt
+├── UpdateChecker.kt
+└── hooks/
+    ├── Hooks.kt
+    └── TargetNames.kt
+```
+
+`TargetNames.kt` 保存不同目标版本的兼容映射，`Hooks.kt` 包含主要 Hook 与模块功能逻辑。
+
+## 说明
+
+这是第三方项目，与红果官方无关。仓库不包含目标应用 APK、签名私钥或签名密码。
+
+当前仓库未附带 LICENSE。如需以特定开源许可证发布，请在公开前自行选择并添加。

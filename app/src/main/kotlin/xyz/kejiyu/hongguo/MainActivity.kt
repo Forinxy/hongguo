@@ -1,57 +1,86 @@
 package xyz.kejiyu.hongguo
 
 import android.app.Activity
-import android.content.res.Configuration
+import android.content.pm.PackageInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowInsetsController
-import android.widget.Button
 import android.widget.TextView
+import xyz.kejiyu.hongguo.hooks.TargetNames
 
 class MainActivity : Activity() {
 
     private lateinit var tvVersion: TextView
+    private lateinit var tvTargetVersions: TextView
     private lateinit var tvStatus: TextView
     private var currentVersion: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        // 状态栏/导航栏与内容区同一颜色，只有深浅两套
-        applyThemeColors()
+        applySystemBars()
 
         tvVersion = findViewById(R.id.tv_version)
+        tvTargetVersions = findViewById(R.id.tv_target_versions)
         tvStatus = findViewById(R.id.tv_update_status)
 
-        // 当前版本：BuildConfig.VERSION_NAME = "1.0.0 (20260810)"
         currentVersion = BuildConfig.VERSION_NAME.substringBefore(' ').substringBefore('(')
-        tvVersion.text = "当前版本：${BuildConfig.VERSION_NAME}"
+        tvVersion.text = "模块 ${BuildConfig.VERSION_NAME}  ·  versionCode ${BuildConfig.VERSION_CODE}"
+        updateTargetVersionText()
 
-        findViewById<Button>(R.id.btn_check_update).setOnClickListener { manualCheck() }
-        findViewById<Button>(R.id.btn_github).setOnClickListener {
+        findViewById<View>(R.id.btn_check_update).setOnClickListener { manualCheck() }
+        findViewById<View>(R.id.btn_github).setOnClickListener {
             UpdateChecker.openUrl(this, UpdateChecker.REPO_URL)
         }
-        findViewById<Button>(R.id.btn_telegram).setOnClickListener {
+        findViewById<View>(R.id.btn_telegram).setOnClickListener {
             UpdateChecker.openUrl(this, UpdateChecker.TG_CHANNEL_URL)
         }
 
-        // 每次打开设置页都可以重新提示一次（静默检查，有更新才弹）
         UpdateChecker.resetShown()
         silentCheck()
     }
 
     override fun onResume() {
         super.onResume()
-        // 静默检查完成后回到界面也能弹；本进程已弹过则不会再弹
+        updateTargetVersionText()
         UpdateChecker.showUpdateDialogIfNeeded(this)
     }
 
-    /** 静默检查：无更新时什么都不显示 */
+    @Suppress("DEPRECATION")
+    private fun packageInfo(pkg: String): PackageInfo? = try {
+        packageManager.getPackageInfo(pkg, 0)
+    } catch (_: Throwable) {
+        null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun versionCodeOf(pi: PackageInfo): Long =
+        if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
+
+    private fun installedLine(label: String, pkg: String, supported: List<String>): String {
+        val pi = packageInfo(pkg) ?: return "$label  未安装\n$pkg"
+        val versionName = pi.versionName ?: "未知"
+        val code = versionCodeOf(pi)
+        val status = if (versionName in supported) "✓ 已适配" else "! 待验证"
+        return "$label  $versionName  ·  $status\nversionCode $code  ·  $pkg"
+    }
+
+    private fun updateTargetVersionText() {
+        if (!::tvTargetVersions.isInitialized) return
+        tvTargetVersions.text = buildString {
+            append("已适配版本\n")
+            append("国版  ${TargetNames.SUPPORTED_CN_VERSIONS.joinToString("  ·  ")}\n")
+            append("国际版  ${TargetNames.SUPPORTED_OVERSEA_VERSIONS.joinToString("  ·  ")}\n\n")
+            append("当前设备\n")
+            append(installedLine("国版", TargetNames.CN_PACKAGE, TargetNames.SUPPORTED_CN_VERSIONS))
+            append("\n\n")
+            append(installedLine("国际版", TargetNames.OVERSEA_PACKAGE, TargetNames.SUPPORTED_OVERSEA_VERSIONS))
+        }
+    }
+
     private fun silentCheck() {
         if (!UpdateChecker.checking && UpdateChecker.latestVersion != null) {
-            // MainHook 启动时已经查过了，直接用结果
             UpdateChecker.showUpdateDialogIfNeeded(this)
             return
         }
@@ -60,10 +89,11 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 手动检查：显示状态和结果 */
     private fun manualCheck() {
+        tvStatus.visibility = View.VISIBLE
         tvStatus.text = "正在检查更新…"
         UpdateChecker.checkUpdate(currentVersion) { latest ->
+            tvStatus.visibility = View.VISIBLE
             tvStatus.text = when {
                 latest != null -> {
                     UpdateChecker.showUpdateDialogIfNeeded(this)
@@ -75,25 +105,25 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 通知栏/导航栏与内容区同一颜色：浅色=白，深色=深灰，跟随系统自动切换 */
-    private fun applyThemeColors() {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val bg = if (dark) 0xFF1E1E1E.toInt() else 0xFFFFFFFF.toInt()
+    private fun applySystemBars() {
+        val bg = getColor(R.color.app_bg)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        window.decorView.setBackgroundColor(bg)
-        findViewById<View>(R.id.root)?.setBackgroundColor(bg)
         if (Build.VERSION.SDK_INT >= 30) {
+            val night = (resources.configuration.uiMode and 0x30) == 0x20
             val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                 WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
             window.insetsController?.setSystemBarsAppearance(
-                if (dark) 0 else lightBars,
+                if (night) 0 else lightBars,
                 lightBars
             )
         } else {
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
-                if (dark) 0 else (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR)
+            run {
+                val night = (resources.configuration.uiMode and 0x30) == 0x20
+                window.decorView.systemUiVisibility =
+                    if (night) 0 else (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR)
+            }
         }
     }
 }
