@@ -1,14 +1,38 @@
-# 红果模块
+<div align="center">
 
-基于 libxposed API 102 的 Android 模块源码，包名为 `xyz.kejiyu.hongguo`。
+# 红果综合模块
 
-## 当前适配
+基于 libxposed API 102 开发的 Android Xposed/LSPosed 模块，旨在提升红果短剧类应用的使用体验与界面沉浸感。
 
-- 红果免费短剧 `com.phoenix.read` 7.3.3.18
-- 红果免费短剧 `com.phoenix.read` 7.3.2.32
-- 红果短剧 Play `com.phoenix.read.oversea.gp` 7.3.1.32
+[![GitHub Repository](https://img.shields.io/badge/GitHub-KEJIYUNB%2Fhongguo-blue?logo=github)](https://github.com/KEJIYUNB/hongguo/)
+[![Download Release](https://img.shields.io/badge/Download-Release-brightgreen?logo=github)](https://github.com/KEJIYUNB/hongguo/releases/latest)
+[![Telegram](https://img.shields.io/badge/Telegram-Kmodify-blue?logo=telegram)](https://t.me/Kmodify)
 
-## 环境
+👉 **[点击跳转 Release 最新版本下载](https://github.com/KEJIYUNB/hongguo/releases/latest)** 👈  
+💬 **[点击加入 Telegram 交流频道](https://t.me/Kmodify)**
+
+</div>
+
+---
+
+## 1. 项目简介
+
+本项目（<span dir="ltr"><code>xyz.kejiyu.hongguo</code></span>）是一个针对红果短剧客户端的界面精简与体验增强模块。支持通过模块内置设置面板自由自定义多种沉浸式观影体验、手势拦截、自动最高画质及体验优化功能。
+
+---
+
+## 2. 当前适配版本
+
+* **红果免费短剧（国内版 `com.phoenix.read`）**
+  * `v7.3.3.18`
+  * `v7.3.2.32`
+  * `v7.3.1.32`
+* **红果短剧（海外版 `com.phoenix.read.oversea.gp`）**
+  * `v7.3.1.32`
+
+---
+
+## 3. 环境
 
 - JDK 17
 - Android SDK 36
@@ -17,39 +41,62 @@
 - Kotlin 2.1.0
 - libxposed API 102
 
-## 构建
+---
 
-Linux / Termux：
+## 4. 功能特性
 
-```bash
-./gradlew assembleRelease
-```
+| 功能分类 | 功能说明 |
+| :--- | :--- |
+| **界面精简** | 隐藏系统状态栏（视频页沉浸显示） |
+| | 隐藏顶部/底部导航栏、作品信息及右侧互动控件 |
+| | 隐藏选集相关控件 |
+| | 隐藏视频播放进度条 |
+| | 隐藏系统手势导航小白条 |
+| | 暂停播放时临时恢复显示控件 |
+| **播放与手势** | 自动选择当前视频支持的最高画质 |
+| | 记忆与自定义默认播放倍速（0.75x ~ 3.0x） |
+| | 双击屏幕动作替换为直接打开评论区（屏蔽默认点赞） |
+| | 禁用下拉手势并折叠下拉刷新提示区域 |
+| | 拦截屏幕顶部区域向下滑动手势 |
+| **内容与账号** | 拦截广告层、金宝箱及悬浮挂件 |
+| | VIP 状态与权益 Hook 解锁 |
+| | VIP 图标及挂件相关显示控制 |
+| **实验性与工具** | OLED 屏幕亮度防烧屏拦截 |
+| | 系统通知栏快捷控制菜单（总开关、配置面板、重启应用） |
+| | 自定义下载数量限制（单日集数、单日剧数、总缓存上限） |
+| | 自动注入红果原生设置页模块快捷入口 |
 
-Windows：
+---
 
-```bat
-gradlew.bat assembleRelease
-```
-
-没有配置私有签名时可以直接构建。需要使用自己的 release keystore 时，将 `keystore.properties.example` 复制为 `keystore.properties`，再填入自己的签名信息。`keystore.properties`、`*.jks` 和 `*.keystore` 已加入 `.gitignore`。
-
-## 项目结构
+## 5. 项目结构
 
 ```text
-app/src/main/kotlin/xyz/kejiyu/hongguo/
-├── MainActivity.kt
-├── MainHook.kt
-├── LogUtil.kt
-├── UpdateChecker.kt
-└── hooks/
-    ├── Hooks.kt
-    └── TargetNames.kt
+.
+├── app/
+│   ├── build.gradle                   # App 模块构建脚本
+│   └── src/main/
+│       ├── assets/                    # Xposed / LSPosed 属性配置 (module.prop, xposed_init)
+│       ├── resources/META-INF/xposed/ # libxposed 接口及 Scope 配置文件
+│       └── kotlin/xyz/kejiyu/hongguo/
+│           ├── MainActivity.kt        # 模块主界面 Activity
+│           ├── MainHook.kt            # Xposed Hook 入口类
+│           ├── LogUtil.kt             # 日志记录与统计辅助类
+│           ├── UpdateChecker.kt       # 模块更新检测服务
+│           └── hooks/
+│               ├── Hooks.kt           # 核心 Hook 业务逻辑与设置面板 UI
+│               └── TargetNames.kt     # 目标版本混淆类名/方法名兼容映射表
+├── gradle/
+│   ├── libs.versions.toml             # Gradle 依赖版本管理
+│   └── wrapper/                       # Gradle Wrapper 运行时文件
+├── build.gradle                       # 项目根构建配置
+├── gradle.properties                  # Gradle 全局属性配置
+└── settings.gradle                    # 项目 Module 引入配置
 ```
 
-`TargetNames.kt` 保存不同目标版本的兼容映射，`Hooks.kt` 包含主要 Hook 与模块功能逻辑。
+---
 
-## 说明
+## 6. 免责声明
 
-这是第三方项目，与红果官方无关。仓库不包含目标应用 APK、签名私钥或签名密码。
-
-当前仓库未附带 LICENSE。如需以特定开源许可证发布，请在公开前自行选择并添加。
+> **⚠️ 注意与声明**
+> 
+> 本项目**仅供学习以及技术交流**，开发者不对此模块造成的任何后果承担责任。
